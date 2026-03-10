@@ -44,3 +44,11 @@ python -m src.engine \
 ## Demo dataset
 
 See `docs/demo_continuation.md` and `data/sessions/demo_session/`.
+
+
+## Config loading smoke test
+
+```bash
+python -m pytest -q
+```
+
