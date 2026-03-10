@@ -1,0 +1,3 @@
+{"commit_id":"c-001","artifact_id":"artifact_other","status":"applied"}
+{"commit_id":"c-002","artifact_id":"artifact_main_v2","status":"applied"}
+{"commit_id":"c-003","artifact_id":"artifact_main_v3","status":"pending"}
