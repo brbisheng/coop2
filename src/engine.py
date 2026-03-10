@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -76,3 +77,68 @@ def build_continuation_pack(
         minimal_context=minimal_context,
         unresolved_conflicts=unresolved_conflicts,
     )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m src.engine",
+        description="Build a continuation pack from a persisted session directory.",
+    )
+    parser.add_argument(
+        "--session-dir",
+        required=True,
+        help="Session directory that may contain snapshot.json, commits.jsonl, event_log.jsonl, dissent/.",
+    )
+    parser.add_argument("--goal", required=True, help="Continuation goal label.")
+    parser.add_argument("--target-artifact-id", required=True, help="Artifact ID to continue from.")
+    parser.add_argument("--recent-k", type=int, default=20, help="Keep up to K recent entries per stream.")
+    parser.add_argument(
+        "--entry-budget",
+        type=int,
+        default=120,
+        help="Total retrieval budget used by continuation trimming strategy.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full continuation pack as JSON.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    pack = build_continuation_pack(
+        args.session_dir,
+        goal=args.goal,
+        target_artifact_id=args.target_artifact_id,
+        recent_k=args.recent_k,
+        entry_budget=args.entry_budget,
+    )
+
+    if args.json:
+        payload = {
+            "goal": pack.goal,
+            "target_artifact_id": pack.target_artifact_id,
+            "arena": pack.arena,
+            "minimal_context": pack.minimal_context,
+            "unresolved_conflicts": pack.unresolved_conflicts,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"goal={pack.goal}")
+    print(f"target_artifact_id={pack.target_artifact_id}")
+    print(f"arena={pack.arena}")
+    print(f"lineage_size={len(pack.minimal_context.get('target_lineage', []))}")
+    print(f"commits={len(pack.minimal_context.get('commits', []))}")
+    print(f"events={len(pack.minimal_context.get('events', []))}")
+    print(f"dissents={len(pack.minimal_context.get('dissents', []))}")
+    print(f"unresolved_conflicts={len(pack.unresolved_conflicts)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
