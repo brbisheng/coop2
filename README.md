@@ -45,12 +45,10 @@ python -m src.engine \
 
 See `docs/demo_continuation.md` and `data/sessions/demo_session/`.
 
+
 ## Config loading smoke test
 
 ```bash
 python -m pytest -q
 ```
 
-This includes config-level checks for:
-- `config/agents.yaml` -> `src.agents.build_agent_from_config`
-- `config/arenas.yaml` -> `src.arenas.load_arenas`
