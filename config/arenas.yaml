@@ -1,0 +1,37 @@
+{
+  "arenas": [
+    {
+      "arena_name": "problem_framing",
+      "accepted_artifact_types": ["research_idea", "question_card"],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": ["patch", "dissent", "merge"]
+    },
+    {
+      "arena_name": "mechanism",
+      "accepted_artifact_types": ["research_idea", "mechanism_card"],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": ["patch", "dissent", "merge"]
+    },
+    {
+      "arena_name": "empirical_grounding",
+      "accepted_artifact_types": ["research_idea", "data_plan_card"],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": ["patch", "dissent", "merge"]
+    }
+  ]
+}

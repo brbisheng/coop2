@@ -1,0 +1,19 @@
+{
+  "snapshot_id": "snap_demo_001",
+  "session_id": "session_demo_001",
+  "priority_open_issues": [
+    {
+      "issue_id": "iss-main-001",
+      "artifact_id": "artifact_main_v3",
+      "summary": "核心机制变量定义仍有冲突"
+    }
+  ],
+  "next_recommended_arena": "mechanism",
+  "artifact_lineages": {
+    "artifact_main_v3": [
+      "artifact_main_v1",
+      "artifact_main_v2",
+      "artifact_main_v3"
+    ]
+  }
+}
