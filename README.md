@@ -45,10 +45,8 @@ python -m src.engine \
 
 See `docs/demo_continuation.md` and `data/sessions/demo_session/`.
 
-
 ## Config loading smoke test
 
 ```bash
 python -m pytest -q
 ```
-

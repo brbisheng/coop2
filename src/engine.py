@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
+from .governor import validate_precommit_action
 from .memory import ContinuationPack, build_minimal_context
 
 
@@ -42,6 +45,114 @@ def _read_dissent_cards(dissent_dir: Path) -> list[dict[str, Any]]:
         if isinstance(raw, dict):
             cards.append(raw)
     return cards
+
+
+def _append_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _now_iso() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+def run_micro_deliberation(
+    *,
+    session_dir: str | Path,
+    artifact_id: str,
+    arena: str,
+    proposed_action: str,
+    critiques: list[dict[str, Any]],
+    panel_state: dict[str, Any],
+    accepted_patches: list[dict[str, Any]] | None = None,
+    unresolved_dissents: list[dict[str, Any]] | None = None,
+    unresolved_dissent_saved: bool | None = None,
+) -> dict[str, Any]:
+    """Run one structured deliberation round and persist core records.
+
+    This is the MVP micro-round glue for:
+    proposal/critique/repair -> governor gate -> commit/snapshot persistence.
+    """
+
+    commit_allowed, reason = validate_precommit_action(
+        proposed_action,
+        critiques,
+        panel_state,
+        accepted_patches=accepted_patches,
+        unresolved_dissents=unresolved_dissents,
+        unresolved_dissent_saved=unresolved_dissent_saved,
+    )
+
+    action = proposed_action.strip().lower()
+    decision = action if commit_allowed else "park"
+
+    root = Path(session_dir)
+    root.mkdir(parents=True, exist_ok=True)
+
+    commit_id = f"commit_{uuid4().hex[:10]}"
+    event_id = f"event_{uuid4().hex[:10]}"
+    now = _now_iso()
+
+    commit = {
+        "commit_id": commit_id,
+        "artifact_id": artifact_id,
+        "decision": decision,
+        "requested_action": action,
+        "allowed": commit_allowed,
+        "reason": reason,
+        "status": "applied" if commit_allowed else "pending",
+        "timestamp": now,
+    }
+
+    event = {
+        "event_id": event_id,
+        "artifact_id": artifact_id,
+        "arena": arena,
+        "type": "micro_deliberation_round",
+        "decision": decision,
+        "commit_id": commit_id,
+        "timestamp": now,
+    }
+
+    snapshot = _read_json(root / "snapshot.json")
+    latest_commits = snapshot.get("latest_commits", [])
+    if not isinstance(latest_commits, list):
+        latest_commits = []
+    latest_commits = [*latest_commits, commit_id]
+
+    snapshot.update(
+        {
+            "snapshot_id": snapshot.get("snapshot_id", f"snap_{uuid4().hex[:10]}"),
+            "latest_commits": latest_commits,
+            "next_recommended_arena": arena,
+        }
+    )
+
+    _append_jsonl(root / "event_log.jsonl", [event])
+    _append_jsonl(root / "commits.jsonl", [commit])
+    _write_json(root / "snapshot.json", snapshot)
+
+    if unresolved_dissents and unresolved_dissent_saved:
+        dissent_dir = root / "dissent"
+        dissent_dir.mkdir(parents=True, exist_ok=True)
+        for item in unresolved_dissents:
+            if not isinstance(item, dict):
+                continue
+            dissent_id = str(item.get("dissent_id", "")).strip() or f"dissent_{uuid4().hex[:8]}"
+            _write_json(dissent_dir / f"{dissent_id}.json", item)
+
+    return {
+        "commit": commit,
+        "event": event,
+        "snapshot": snapshot,
+    }
 
 
 def build_continuation_pack(
