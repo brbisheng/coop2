@@ -1,0 +1,55 @@
+{
+  "agents": [
+    {
+      "agent_id": "agent_a",
+      "human_base": {
+        "weight": 0.45,
+        "heuristics": [
+          "people get tired",
+          "time and money are limited"
+        ]
+      },
+      "module_weights": {
+        "economics": 0.35,
+        "philosophy": 0.20
+      },
+      "seat_policy": {
+        "preferred_seat": "proposer"
+      }
+    },
+    {
+      "agent_id": "agent_b",
+      "human_base": {
+        "weight": 0.50,
+        "heuristics": [
+          "communication is misunderstood",
+          "social pressure changes behavior"
+        ]
+      },
+      "module_weights": {
+        "psychology": 0.30,
+        "economics": 0.20
+      },
+      "seat_policy": {
+        "preferred_seat": "critic"
+      }
+    },
+    {
+      "agent_id": "agent_c",
+      "human_base": {
+        "weight": 0.40,
+        "heuristics": [
+          "risk aversion matters",
+          "implementation is messy"
+        ]
+      },
+      "module_weights": {
+        "philosophy": 0.40,
+        "economics": 0.20
+      },
+      "seat_policy": {
+        "preferred_seat": "repairer"
+      }
+    }
+  ]
+}

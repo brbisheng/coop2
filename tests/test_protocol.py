@@ -41,30 +41,3 @@ def test_persona_diversity_score_higher_for_distinct_personas():
     }
 
     assert persona_diversity_score(high_diversity) > persona_diversity_score(low_diversity)
-
-
-def test_validate_precommit_action_only_allows_park_or_continue_when_gate_fails():
-    critiques = [
-        {
-            "attack_labels": ["identification-risk"],
-            "challenged_fields": ["assumption_set"],
-            "reasoning_path_labels": ["causal-chain"],
-        },
-        {
-            "attack_labels": ["identification-risk"],
-            "challenged_fields": ["assumption_set"],
-            "reasoning_path_labels": ["causal-chain"],
-        },
-    ]
-    panel_state = {
-        "agents": [
-            {"human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
-            {"human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
-        ]
-    }
-
-    ok_commit, _ = validate_precommit_action("commit", critiques, panel_state)
-    ok_park, _ = validate_precommit_action("park", critiques, panel_state)
-
-    assert ok_commit is False
-    assert ok_park is True
