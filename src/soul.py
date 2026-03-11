@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from .protocol import soul_overrides_governance
+
 
 class SoulValidationError(ValueError):
     """Raised when a soul payload violates the allowed schema."""
@@ -42,7 +44,7 @@ class SoulProfile:
         return payload
 
 
-def validate_soul_payload(raw: dict[str, Any] | None) -> SoulProfile:
+def validate_soul_profile(raw: dict[str, Any] | None) -> SoulProfile:
     """Validate a raw soul payload and return a normalized profile."""
 
     if raw is None:
@@ -57,7 +59,20 @@ def validate_soul_payload(raw: dict[str, Any] | None) -> SoulProfile:
             f"rejected keys: {unknown}"
         )
 
-    return SoulProfile(
+    profile = SoulProfile(
         style=dict(raw.get("style", {})),
         temperament=dict(raw.get("temperament", {})),
     )
+
+    if soul_overrides_governance(profile.to_dict()):
+        raise SoulValidationError(
+            "soul profile cannot override commit rules/min critique constraints"
+        )
+
+    return profile
+
+
+def validate_soul_payload(raw: dict[str, Any] | None) -> SoulProfile:
+    """Backward-compatible alias for soul validation."""
+
+    return validate_soul_profile(raw)

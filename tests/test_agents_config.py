@@ -109,6 +109,22 @@ def test_soul_injection_rejects_unauthorized_fields():
         raise AssertionError("expected AgentConfigError when soul injects unauthorized fields")
 
 
+def test_soul_injection_rejects_governance_overrides_nested_in_style():
+    raw = {
+        "agent_id": "a5b",
+        "human_base": {"weight": 0.6, "heuristics": ["h1"]},
+        "module_weights": {"economics": 1.0},
+    }
+    provider = _Provider({"a5b": {"style": {"min_critiques": 1, "tone": "hard"}}})
+
+    try:
+        build_agent_from_config(raw, soul_provider=provider)
+    except AgentConfigError as exc:
+        assert "cannot override commit rules" in str(exc)
+    else:
+        raise AssertionError("expected AgentConfigError when soul style overrides governance")
+
+
 def test_build_agent_without_soul_provider_falls_back_to_default_soul_profile():
     raw = {
         "agent_id": "a6",
