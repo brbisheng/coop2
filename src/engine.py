@@ -10,9 +10,73 @@ from typing import Any
 from uuid import uuid4
 
 from .governor import validate_precommit_action
+from .arenas import load_arenas
 from .memory import ContinuationPack, build_minimal_context
 from .protocol import DebateArena, parse_enum
 from .storage import ensure_current_schema
+
+
+CONTINUE_LIKE_ACTIONS = {"continue", "continue_discussion", "discuss"}
+
+
+def _build_round_input(
+    critiques: list[dict[str, Any]],
+    round_input: dict[str, Any] | None,
+    accepted_patches: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Normalize legacy callsites into structured round input."""
+
+    normalized = round_input.copy() if isinstance(round_input, dict) else {}
+    normalized.setdefault("proposal", {"present": True})
+    normalized.setdefault("critique_a", critiques[0] if len(critiques) >= 1 else None)
+    normalized.setdefault("critique_b", critiques[1] if len(critiques) >= 2 else None)
+    normalized.setdefault("repair", {"present": bool(accepted_patches)})
+    normalized.setdefault("governor_decision", None)
+    return normalized
+
+
+def _required_obligation_report(arena_name: str, round_input: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    """Validate required obligations in arena config and return missing items."""
+
+    arena_specs = load_arenas(Path(__file__).resolve().parents[1] / "config" / "arenas.yaml")
+    spec = arena_specs.get(arena_name)
+    required = spec.required_obligations if spec else {}
+
+    def _present(value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, dict) and "present" in value:
+            return int(bool(value.get("present")))
+        return int(bool(value))
+
+    critiques_present = _present(round_input.get("critique_a")) + _present(round_input.get("critique_b"))
+    observed = {
+        "propose": _present(round_input.get("proposal")),
+        "independent_critiques": critiques_present,
+        "repair_or_merge": _present(round_input.get("repair")),
+        "governor_decision": _present(round_input.get("governor_decision")),
+    }
+
+    missing: list[str] = []
+    for obligation, needed in required.items():
+        count = int(needed)
+        current = int(observed.get(obligation, 0))
+        if current < count:
+            missing.append(f"{obligation} ({current}/{count})")
+
+    report = {
+        "arena": arena_name,
+        "required": required,
+        "observed": observed,
+        "missing": missing,
+    }
+    return missing, report
+
+
+def _action_decision(action: str, allowed: bool) -> str:
+    if action in {"park", *CONTINUE_LIKE_ACTIONS}:
+        return "park"
+    return "accept" if allowed else "park"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -153,6 +217,7 @@ def run_micro_deliberation(
     arena: str,
     proposed_action: str,
     critiques: list[dict[str, Any]],
+    round_input: dict[str, Any] | None = None,
     panel_state: dict[str, Any],
     accepted_patches: list[dict[str, Any]] | None = None,
     unresolved_dissents: list[dict[str, Any]] | None = None,
@@ -165,18 +230,28 @@ def run_micro_deliberation(
     proposal/critique/repair -> governor gate -> commit/snapshot persistence.
     """
 
-    commit_allowed, reason = validate_precommit_action(
-        proposed_action,
-        critiques,
-        panel_state,
-        accepted_patches=accepted_patches,
-        unresolved_dissents=unresolved_dissents,
-        unresolved_dissent_saved=unresolved_dissent_saved,
-    )
-
     action = proposed_action.strip().lower()
     arena_name = parse_enum(arena, DebateArena, "arena").value
-    decision = "accept" if commit_allowed else "park"
+    round_input_data = _build_round_input(critiques, round_input, accepted_patches)
+    missing_obligations, obligation_report = _required_obligation_report(arena_name, round_input_data)
+
+    if missing_obligations:
+        commit_allowed = action in {"park", *CONTINUE_LIKE_ACTIONS}
+        reason = (
+            "required obligations not satisfied: "
+            + ", ".join(missing_obligations)
+            + "; only park/continue allowed"
+        )
+    else:
+        commit_allowed, reason = validate_precommit_action(
+            proposed_action,
+            critiques,
+            panel_state,
+            accepted_patches=accepted_patches,
+            unresolved_dissents=unresolved_dissents,
+            unresolved_dissent_saved=unresolved_dissent_saved,
+        )
+    decision = _action_decision(action, commit_allowed)
 
     root = Path(session_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -265,6 +340,68 @@ def run_micro_deliberation(
         "audit_summary": audit_summary,
     }
 
+    step_events = [
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
+            "type": "micro_deliberation_step",
+            "round_event_id": event_id,
+            "step": "proposal",
+            "payload": round_input_data.get("proposal"),
+            "timestamp": now,
+        },
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
+            "type": "micro_deliberation_step",
+            "round_event_id": event_id,
+            "step": "critique_a",
+            "payload": round_input_data.get("critique_a"),
+            "timestamp": now,
+        },
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
+            "type": "micro_deliberation_step",
+            "round_event_id": event_id,
+            "step": "critique_b",
+            "payload": round_input_data.get("critique_b"),
+            "timestamp": now,
+        },
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
+            "type": "micro_deliberation_step",
+            "round_event_id": event_id,
+            "step": "repair",
+            "payload": round_input_data.get("repair"),
+            "timestamp": now,
+        },
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
+            "type": "micro_deliberation_step",
+            "round_event_id": event_id,
+            "step": "governor_decision",
+            "payload": {
+                "decision": decision,
+                "allowed": commit_allowed,
+                "reason": reason,
+                "missing_obligations": missing_obligations,
+                "obligation_report": obligation_report,
+            },
+            "timestamp": now,
+        },
+    ]
+    step_events = [item for item in step_events if item.get("payload") not in (None, {}, [])]
+    event["round_input"] = round_input_data
+    event["obligation_report"] = obligation_report
+
     snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
     latest_commits = snapshot.get("latest_commits", [])
     if not isinstance(latest_commits, list):
@@ -290,7 +427,7 @@ def run_micro_deliberation(
         }
     )
 
-    _append_jsonl(root / "event_log.jsonl", [event])
+    _append_jsonl(root / "event_log.jsonl", [*step_events, event])
     _append_jsonl(root / "commits.jsonl", [commit])
     _write_json(root / "snapshot.json", snapshot)
 
