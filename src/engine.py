@@ -12,7 +12,7 @@ from uuid import uuid4
 from .governor import validate_precommit_action
 from .arenas import load_arenas
 from .memory import ContinuationPack, build_minimal_context
-from .protocol import DebateArena, parse_enum
+from .protocol import DebateArena, DebateDecision, parse_enum
 from .storage import ensure_current_schema
 
 
@@ -74,9 +74,9 @@ def _required_obligation_report(arena_name: str, round_input: dict[str, Any]) ->
 
 
 def _action_decision(action: str, allowed: bool) -> str:
-    if action in {"park", *CONTINUE_LIKE_ACTIONS}:
-        return "park"
-    return "accept" if allowed else "park"
+    if action in {DebateDecision.PARK.value, *CONTINUE_LIKE_ACTIONS}:
+        return DebateDecision.PARK.value
+    return DebateDecision.ACCEPT.value if allowed else DebateDecision.PARK.value
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -289,7 +289,7 @@ def run_micro_deliberation(
     missing_obligations, obligation_report = _required_obligation_report(arena_name, round_input_data)
 
     if missing_obligations:
-        commit_allowed = action in {"park", *CONTINUE_LIKE_ACTIONS}
+        commit_allowed = action in {DebateDecision.PARK.value, *CONTINUE_LIKE_ACTIONS}
         reason = (
             "required obligations not satisfied: "
             + ", ".join(missing_obligations)

@@ -41,6 +41,31 @@ def test_debate_turn_arena_rejects_invalid_value():
         )
 
 
+
+
+def test_artifact_status_accepts_legacy_aliases():
+    card = ArtifactCard(
+        artifact_id="idea_legacy",
+        title="title",
+        content="content",
+        status="parked",
+        **_TRACEABILITY,
+    )
+
+    assert card.status.value == "park"
+
+
+def test_debate_turn_accepts_legacy_aliases():
+    turn = DebateTurn(
+        turn_id="turn_legacy",
+        arena="policy",
+        decision="commit",
+        message="msg",
+    )
+
+    assert turn.arena.value == "empirical_grounding"
+    assert turn.decision.value == "accept"
+
 def test_commit_record_missing_traceability_fields_raises_validation_error():
     with pytest.raises(ModelValidationError, match="parent_ids is required"):
         CommitRecord(
