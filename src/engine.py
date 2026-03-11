@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from .governor import validate_precommit_action
 from .memory import ContinuationPack, build_minimal_context
+from .protocol import DebateArena, parse_enum
+from .storage import ensure_current_schema
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -91,7 +93,8 @@ def run_micro_deliberation(
     )
 
     action = proposed_action.strip().lower()
-    decision = action if commit_allowed else "park"
+    arena_name = parse_enum(arena, DebateArena, "arena").value
+    decision = "accept" if commit_allowed else "park"
 
     root = Path(session_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -109,19 +112,21 @@ def run_micro_deliberation(
         "reason": reason,
         "status": "applied" if commit_allowed else "pending",
         "timestamp": now,
+        "schema_version": 2,
     }
 
     event = {
         "event_id": event_id,
         "artifact_id": artifact_id,
-        "arena": arena,
+        "arena": arena_name,
         "type": "micro_deliberation_round",
         "decision": decision,
         "commit_id": commit_id,
         "timestamp": now,
+        "schema_version": 2,
     }
 
-    snapshot = _read_json(root / "snapshot.json")
+    snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
     latest_commits = snapshot.get("latest_commits", [])
     if not isinstance(latest_commits, list):
         latest_commits = []
@@ -131,7 +136,8 @@ def run_micro_deliberation(
         {
             "snapshot_id": snapshot.get("snapshot_id", f"snap_{uuid4().hex[:10]}"),
             "latest_commits": latest_commits,
-            "next_recommended_arena": arena,
+            "next_recommended_arena": arena_name,
+            "schema_version": 2,
         }
     )
 
@@ -166,10 +172,10 @@ def build_continuation_pack(
     """Build a continuation pack from persisted session data."""
 
     root = Path(session_dir)
-    snapshot = _read_json(root / "snapshot.json")
-    commits = _read_jsonl(root / "commits.jsonl")
-    events = _read_jsonl(root / "event_log.jsonl")
-    dissents = _read_dissent_cards(root / "dissent")
+    snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
+    commits = [ensure_current_schema(entry) for entry in _read_jsonl(root / "commits.jsonl")]
+    events = [ensure_current_schema(entry) for entry in _read_jsonl(root / "event_log.jsonl")]
+    dissents = [ensure_current_schema(entry) for entry in _read_dissent_cards(root / "dissent")]
 
     minimal_context, unresolved_conflicts = build_minimal_context(
         snapshot,

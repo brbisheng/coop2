@@ -8,7 +8,7 @@ from math import sqrt
 from typing import Any
 
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 DEFAULT_PERSONA_DIVERSITY_THRESHOLD = 0.25
 
 
@@ -19,19 +19,22 @@ class ModelValidationError(ValueError):
 class ArtifactStatus(str, Enum):
     DRAFT = "draft"
     ACTIVE = "active"
-    ARCHIVED = "archived"
+    BRANCHED = "branched"
+    PARKED = "parked"
+    ACCEPTED = "accepted"
 
 
 class DebateDecision(str, Enum):
     ACCEPT = "accept"
+    BRANCH = "branch"
+    PARK = "park"
     REJECT = "reject"
-    DEFER = "defer"
 
 
 class DebateArena(str, Enum):
-    GENERAL = "general"
-    CODE = "code"
-    POLICY = "policy"
+    PROBLEM_FRAMING = "problem_framing"
+    MECHANISM = "mechanism"
+    EMPIRICAL_GROUNDING = "empirical_grounding"
 
 
 class CommitStatus(str, Enum):
@@ -40,10 +43,28 @@ class CommitStatus(str, Enum):
     REVERTED = "reverted"
 
 
+ENUM_COMPAT_ALIASES: dict[type[Enum], dict[str, str]] = {
+    ArtifactStatus: {
+        "archived": ArtifactStatus.PARKED.value,
+    },
+    DebateDecision: {
+        "commit": DebateDecision.ACCEPT.value,
+        "defer": DebateDecision.PARK.value,
+    },
+    DebateArena: {
+        "general": DebateArena.PROBLEM_FRAMING.value,
+        "code": DebateArena.MECHANISM.value,
+        "policy": DebateArena.EMPIRICAL_GROUNDING.value,
+    },
+}
+
+
 def parse_enum(raw_value: str, enum_type: type[Enum], field_name: str) -> Enum:
     """Parse/validate enum values with a clear error message."""
+    normalized = str(raw_value).strip().lower()
+    normalized = ENUM_COMPAT_ALIASES.get(enum_type, {}).get(normalized, normalized)
     try:
-        return enum_type(raw_value)
+        return enum_type(normalized)
     except ValueError as exc:
         allowed = ", ".join(item.value for item in enum_type)
         raise ModelValidationError(
