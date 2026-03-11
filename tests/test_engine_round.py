@@ -279,3 +279,84 @@ def test_run_perspective_audit_batch_with_multiple_modules_is_structured(tmp_pat
     assert result["event"]["perspective_audits"]
     assert result["event"]["audit_summary"]["module_count"] == 2
     assert "modules=economics,psychology" in result["event"]["patch_rationale"]
+
+
+def test_run_perspective_audit_batch_rejects_invalid_module_payload():
+    from src.perspectives import PerspectiveValidationError
+
+    class _BrokenModule:
+        name = "broken"
+        version = "0.1"
+
+        def audit(self, artifact, local_context, unresolved_conflicts):
+            return {
+                "observations": [],
+                "criticisms": [],
+                "revisions": [],
+                "risks": [],
+                "questions": [],
+                "evidence_needs": [],
+            }
+
+    try:
+        run_perspective_audit_batch(
+            modules=[_BrokenModule()],
+            artifact={"artifact_id": "a1"},
+            local_context={"arena": "mechanism"},
+            unresolved_conflicts=[],
+        )
+    except PerspectiveValidationError as exc:
+        assert "Missing required audit fields" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for invalid module output")
+
+
+def test_run_micro_round_aggregates_three_perspective_modules(tmp_path: Path):
+    from src.perspectives import EconomicsModule, PhilosophyModule, PsychologyModule
+
+    audits = run_perspective_audit_batch(
+        modules=[EconomicsModule(), PhilosophyModule(), PsychologyModule()],
+        artifact={"artifact_id": "a1"},
+        local_context={"arena": "mechanism"},
+        unresolved_conflicts=[],
+    )
+
+    session = tmp_path / "session_006"
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.4, "module_weights": {"economics": 0.6}},
+            {"agent_id": "a2", "human_base_weight": 0.3, "module_weights": {"philosophy": 0.7}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v6",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "triple-audit-informed"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+        perspective_audits=audits,
+    )
+
+    summary = result["event"]["audit_summary"]
+    assert summary["module_count"] == 3
+    assert set(summary["modules"]) == {"economics", "philosophy", "psychology"}
+    assert len(summary["revisions"]) == 3
+    assert "modules=economics,philosophy,psychology" in result["event"]["patch_rationale"]

@@ -127,14 +127,29 @@ class PsychologyModule(BasePerspectiveModule):
         return self._validated(payload)
 
 
-MODULE_REGISTRY: dict[str, type[BasePerspectiveModule]] = {
-    EconomicsModule.name: EconomicsModule,
-    PhilosophyModule.name: PhilosophyModule,
-    PsychologyModule.name: PsychologyModule,
-}
+MODULE_REGISTRY: dict[str, type[BasePerspectiveModule]] = {}
+
+
+def register_perspective_module(module_cls: type[BasePerspectiveModule]) -> None:
+    """Register a perspective module implementation by its declared name."""
+
+    module_name = str(getattr(module_cls, "name", "")).strip().lower()
+    if not module_name:
+        raise PerspectiveValidationError("module class must declare non-empty name")
+    MODULE_REGISTRY[module_name] = module_cls
+
+
+def list_registered_modules() -> list[str]:
+    """Return sorted module names for inspection/testing."""
+
+    return sorted(MODULE_REGISTRY)
 
 
 def get_registered_module_class(name: str) -> type[BasePerspectiveModule] | None:
     """Return registered module class by normalized name."""
 
     return MODULE_REGISTRY.get(str(name).strip().lower())
+
+
+for _module in (EconomicsModule, PhilosophyModule, PsychologyModule):
+    register_perspective_module(_module)
