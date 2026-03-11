@@ -6,6 +6,7 @@ from typing import Any
 
 from .protocol import (
     DEFAULT_PERSONA_DIVERSITY_THRESHOLD,
+    DebateDecision,
     is_independent_critique,
     persona_diversity_score,
     soul_overrides_governance,
@@ -29,7 +30,7 @@ def validate_precommit_action(
 
     action = proposed_action.strip().lower()
     continue_like = {"continue", "continue_discussion", "discuss"}
-    allowed_on_failure = {"park", *continue_like}
+    allowed_on_failure = {DebateDecision.PARK.value, *continue_like}
 
     independent = len(critiques) >= 2 and is_independent_critique(critiques[0], critiques[1])
     diversity = persona_diversity_score(panel_state)

@@ -48,11 +48,10 @@ class ModelValidationError(ValueError):
 
 
 class ArtifactStatus(str, Enum):
-    DRAFT = "draft"
-    ACTIVE = "active"
-    BRANCHED = "branched"
-    PARKED = "parked"
-    ACCEPTED = "accepted"
+    ACCEPT = "accept"
+    BRANCH = "branch"
+    PARK = "park"
+    REJECT = "reject"
 
 
 class DebateDecision(str, Enum):
@@ -76,7 +75,15 @@ class CommitStatus(str, Enum):
 
 ENUM_COMPAT_ALIASES: dict[type[Enum], dict[str, str]] = {
     ArtifactStatus: {
-        "archived": ArtifactStatus.PARKED.value,
+        "accepted": ArtifactStatus.ACCEPT.value,
+        "accept": ArtifactStatus.ACCEPT.value,
+        "active": ArtifactStatus.ACCEPT.value,
+        "branched": ArtifactStatus.BRANCH.value,
+        "branch": ArtifactStatus.BRANCH.value,
+        "parked": ArtifactStatus.PARK.value,
+        "archived": ArtifactStatus.PARK.value,
+        "draft": ArtifactStatus.PARK.value,
+        "rejected": ArtifactStatus.REJECT.value,
     },
     DebateDecision: {
         "commit": DebateDecision.ACCEPT.value,

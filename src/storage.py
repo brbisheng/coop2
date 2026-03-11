@@ -10,12 +10,22 @@ from .protocol import CURRENT_SCHEMA_VERSION, ModelValidationError
 
 
 _DEF_ARTIFACT_STATUS_MAP = {
-    "archived": "parked",
+    "accepted": "accept",
+    "active": "accept",
+    "branched": "branch",
+    "parked": "park",
+    "archived": "park",
+    "draft": "park",
+    "rejected": "reject",
 }
 
 _DEF_DECISION_MAP = {
+    "accepted": "accept",
     "commit": "accept",
     "defer": "park",
+    "branched": "branch",
+    "parked": "park",
+    "rejected": "reject",
 }
 
 _DEF_ARENA_MAP = {

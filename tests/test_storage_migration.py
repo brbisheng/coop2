@@ -29,7 +29,19 @@ def test_ensure_current_schema_migrates_legacy_decision_and_arena():
     assert migrated["decision"] == "accept"
     assert migrated["requested_action"] == "accept"
     assert migrated["arena"] == "empirical_grounding"
-    assert migrated["status"] == "parked"
+    assert migrated["status"] == "park"
+
+
+def test_ensure_current_schema_migrates_legacy_status_variants():
+    for old_status, expected in {
+        "active": "accept",
+        "accepted": "accept",
+        "branched": "branch",
+        "parked": "park",
+        "rejected": "reject",
+    }.items():
+        migrated = ensure_current_schema({"schema_version": 1, "status": old_status})
+        assert migrated["status"] == expected
 
 
 def test_engine_can_read_migrated_legacy_records(tmp_path: Path):
