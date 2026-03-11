@@ -20,6 +20,38 @@ _TRACEABILITY = {
 }
 
 
+
+
+def test_artifact_card_missing_parent_ids_raises_validation_error():
+    with pytest.raises(ModelValidationError, match="parent_ids is required"):
+        ArtifactCard(
+            artifact_id="a-1",
+            title="title",
+            content="content",
+            status="accept",
+            version="v1",
+            open_issues=["issue-1"],
+            proposed_changes={"mechanism": "clarified"},
+            reasons="reason",
+            dissent_patch_ids=["d-1"],
+            why_not_others="alternative lacks support",
+        )
+
+
+def test_artifact_card_missing_why_not_others_raises_validation_error():
+    with pytest.raises(ModelValidationError, match="why_not_others is required"):
+        ArtifactCard(
+            artifact_id="a-2",
+            title="title",
+            content="content",
+            status="accept",
+            parent_ids=["a-1"],
+            version="v2",
+            open_issues=["issue-1"],
+            proposed_changes={"mechanism": "clarified"},
+            reasons="reason",
+            dissent_patch_ids=["d-1"],
+        )
 def test_artifact_status_rejects_invalid_value():
     with pytest.raises(ModelValidationError):
         ArtifactCard(

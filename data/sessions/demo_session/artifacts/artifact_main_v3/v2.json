@@ -1,0 +1,27 @@
+{
+  "artifact_id": "artifact_main_v3",
+  "parent_ids": [
+    "c-001"
+  ],
+  "version": "v2",
+  "open_issues": [
+    "识别策略仍有冲突"
+  ],
+  "proposed_changes": [
+    {
+      "mechanism": "加入替代识别路径"
+    }
+  ],
+  "why_not_others": [
+    "未采用纯经验替代方案"
+  ],
+  "dissent_patch_ids": [
+    "d-001",
+    "d-branch-002"
+  ],
+  "commit_id": "c-002",
+  "event_id": "e-002",
+  "decision": "accept",
+  "status": "applied",
+  "schema_version": 3
+}

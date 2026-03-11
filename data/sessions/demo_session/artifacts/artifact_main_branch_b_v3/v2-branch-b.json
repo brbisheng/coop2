@@ -1,0 +1,26 @@
+{
+  "artifact_id": "artifact_main_branch_b_v3",
+  "parent_ids": [
+    "c-001"
+  ],
+  "version": "v2-branch-b",
+  "open_issues": [
+    "分支假设待证据验证"
+  ],
+  "proposed_changes": [
+    {
+      "empirical_grounding": "新增反向机制检验"
+    }
+  ],
+  "why_not_others": [
+    "尚未回主干，等待下一轮证据"
+  ],
+  "dissent_patch_ids": [
+    "d-branch-002"
+  ],
+  "commit_id": "c-branch-003",
+  "event_id": "e-003",
+  "decision": "branch",
+  "status": "pending",
+  "schema_version": 3
+}

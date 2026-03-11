@@ -144,13 +144,17 @@ def _persist_artifact_version(
     artifact_rel_path = Path("artifacts") / artifact_id / f"{version}.json"
     artifact_payload = {
         "artifact_id": artifact_id,
+        "parent_ids": commit.get("parent_ids", []),
         "version": version,
+        "open_issues": commit.get("open_issues", []),
+        "proposed_changes": commit.get("proposed_changes", []),
+        "why_not_others": commit.get("why_not_others", []),
+        "dissent_patch_ids": commit.get("dissent_patch_ids", []),
         "commit_id": commit.get("commit_id"),
         "event_id": event.get("event_id"),
         "decision": commit.get("decision"),
         "status": commit.get("status"),
         "timestamp": commit.get("timestamp"),
-        "proposed_changes": commit.get("proposed_changes", []),
         "schema_version": 3,
     }
     _write_json(root / artifact_rel_path, artifact_payload)
