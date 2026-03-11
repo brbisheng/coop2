@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.engine import run_micro_deliberation
+from src.engine import run_micro_deliberation, run_perspective_audit_batch
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -164,3 +164,58 @@ def test_lineage_chain_can_be_reconstructed_from_parent_ids(tmp_path: Path):
 
     assert second["commit"]["parent_ids"] == [first["commit"]["commit_id"]]
     assert second["commit"]["version"] == "v2"
+
+
+
+def test_run_perspective_audit_batch_with_multiple_modules_is_structured(tmp_path: Path):
+    from src.perspectives import EconomicsModule, PsychologyModule
+
+    audits = run_perspective_audit_batch(
+        modules=[EconomicsModule(), PsychologyModule()],
+        artifact={"artifact_id": "a1"},
+        local_context={"arena": "mechanism"},
+        unresolved_conflicts=[],
+    )
+
+    assert len(audits) == 2
+    assert {item["module"] for item in audits} == {"economics", "psychology"}
+    for item in audits:
+        assert "audit" in item
+        assert isinstance(item["audit"]["confidence"], (int, float))
+
+    session = tmp_path / "session_004"
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.4, "module_weights": {"economics": 0.6}},
+            {"agent_id": "a2", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v4",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "audit-informed"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+        perspective_audits=audits,
+    )
+
+    assert result["event"]["perspective_audits"]
+    assert result["event"]["audit_summary"]["module_count"] == 2
+    assert "modules=economics,psychology" in result["event"]["patch_rationale"]

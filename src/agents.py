@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .human_base import HumanBaseProfile
-from .perspectives import EconomicsModuleStub, PerspectiveModule
+from .perspectives import PerspectiveModule, get_registered_module_class
 
 
 class AgentConfigError(ValueError):
@@ -28,12 +28,34 @@ def _normalize_weights(weights: dict[str, Any]) -> dict[str, float]:
     cleaned: dict[str, float] = {}
     for key, value in weights.items():
         if isinstance(value, (int, float)) and value > 0:
-            cleaned[str(key)] = float(value)
+            cleaned[str(key).strip().lower()] = float(value)
 
     total = sum(cleaned.values())
     if total <= 0:
         return {}
     return {k: v / total for k, v in cleaned.items()}
+
+
+def _instantiate_modules(module_weights: dict[str, float]) -> list[PerspectiveModule]:
+    if not module_weights:
+        module_cls = get_registered_module_class("economics")
+        if module_cls is None:
+            raise AgentConfigError("default perspective module 'economics' is not registered")
+        return [module_cls()]
+
+    modules: list[PerspectiveModule] = []
+    missing: list[str] = []
+    for module_name in module_weights:
+        module_cls = get_registered_module_class(module_name)
+        if module_cls is None:
+            missing.append(module_name)
+            continue
+        modules.append(module_cls())
+
+    if missing:
+        raise AgentConfigError(f"unknown perspective module(s): {missing}")
+
+    return modules
 
 
 def build_agent_from_config(raw: dict[str, Any]) -> AgentInstance:
@@ -55,8 +77,8 @@ def build_agent_from_config(raw: dict[str, Any]) -> AgentInstance:
         heuristics=list(human_raw.get("heuristics", [])),
     )
 
-    modules = [EconomicsModuleStub()]
     module_weights = _normalize_weights(raw.get("module_weights", {}))
+    modules = _instantiate_modules(module_weights)
 
     return AgentInstance(
         agent_id=agent_id,

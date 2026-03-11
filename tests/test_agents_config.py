@@ -31,3 +31,32 @@ def test_build_agent_from_config_and_persona_mix_from_config_file():
     assert agent.agent_id == "agent_a"
     assert "human_base" in mix
     assert mix["human_base"] > 0
+
+
+
+def test_build_agent_from_config_fails_on_unknown_module():
+    raw = {
+        "agent_id": "a2",
+        "human_base": {"weight": 0.7, "heuristics": ["h1"]},
+        "module_weights": {"unknown_module": 1.0},
+    }
+
+    try:
+        build_agent_from_config(raw)
+    except AgentConfigError as exc:
+        assert "unknown perspective module" in str(exc)
+    else:
+        raise AssertionError("expected AgentConfigError for unknown module")
+
+
+def test_build_agent_from_config_instantiates_multiple_modules():
+    raw = {
+        "agent_id": "a3",
+        "human_base": {"weight": 0.6, "heuristics": ["h1"]},
+        "module_weights": {"economics": 2.0, "psychology": 1.0},
+    }
+
+    agent = build_agent_from_config(raw)
+
+    names = {module.name for module in agent.perspective_modules}
+    assert names == {"economics", "psychology"}
