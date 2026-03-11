@@ -78,6 +78,17 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert commits[0]["proposed_changes"] == [{"mechanism": "clarified"}]
     assert commits[0]["reasons"]
     assert commits[0]["why_not_others"]
+    assert commits[0]["dissent_patch_ids"]
+    assert events[-1]["reasons"]
+    assert events[-1]["why_not_others"]
+    assert events[-1]["dissent_patch_ids"]
+    artifact_v1 = json.loads((session / "artifacts" / "artifact_main_v3" / "v1.json").read_text(encoding="utf-8"))
+    assert artifact_v1["version"] == "v1"
+    assert artifact_v1["parent_ids"] == []
+    assert artifact_v1["open_issues"]
+    assert artifact_v1["proposed_changes"]
+    assert artifact_v1["why_not_others"]
+    assert artifact_v1["dissent_patch_ids"]
     assert {event["step"] for event in events if event.get("type") == "micro_deliberation_step"} == {
         "proposal",
         "critique_a",

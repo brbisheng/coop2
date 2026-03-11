@@ -70,5 +70,19 @@
     "未选纯经验路径：缺少因果可解释性",
     "未合并分支B：当前证据不足"
   ],
-  "schema_version": 2
+  "schema_version": 3,
+  "artifact_heads": {
+    "artifact_main_v3": {
+      "artifact_id": "artifact_main_v3",
+      "version": "v2",
+      "path": "artifacts/artifact_main_v3/v2.json",
+      "commit_id": "c-002"
+    },
+    "artifact_main_branch_b_v3": {
+      "artifact_id": "artifact_main_branch_b_v3",
+      "version": "v2-branch-b",
+      "path": "artifacts/artifact_main_branch_b_v3/v2-branch-b.json",
+      "commit_id": "c-branch-003"
+    }
+  }
 }
