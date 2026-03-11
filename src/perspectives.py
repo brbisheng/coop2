@@ -1,4 +1,4 @@
-"""Perspective module protocol and basic stubs."""
+"""Perspective module protocol, registry, and MVP perspective implementations."""
 
 from __future__ import annotations
 
@@ -33,6 +33,17 @@ class PerspectiveModule(Protocol):
         ...
 
 
+class BasePerspectiveModule:
+    """Simple reusable base with shared payload validation."""
+
+    name = "base"
+    version = "0.1"
+
+    def _validated(self, payload: dict[str, Any]) -> dict[str, Any]:
+        validate_perspective_output(payload)
+        return payload
+
+
 def validate_perspective_output(payload: dict[str, Any]) -> None:
     """Validate required perspective output envelope fields."""
 
@@ -44,8 +55,8 @@ def validate_perspective_output(payload: dict[str, Any]) -> None:
         raise PerspectiveValidationError("confidence must be numeric")
 
 
-class EconomicsModuleStub:
-    """Minimal economics perspective stub used for MVP wiring tests."""
+class EconomicsModule(BasePerspectiveModule):
+    """Economics perspective for incentives and mechanism quality."""
 
     name = "economics"
     version = "0.1"
@@ -65,5 +76,65 @@ class EconomicsModuleStub:
             "evidence_needs": ["collect baseline behavioral indicators"],
             "confidence": 0.55,
         }
-        validate_perspective_output(payload)
-        return payload
+        return self._validated(payload)
+
+
+class PhilosophyModule(BasePerspectiveModule):
+    """Philosophy perspective for normative and conceptual checks."""
+
+    name = "philosophy"
+    version = "0.1"
+
+    def audit(
+        self,
+        artifact: dict[str, Any],
+        local_context: dict[str, Any],
+        unresolved_conflicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = {
+            "observations": ["core concepts are defined but norm hierarchy is implicit"],
+            "criticisms": ["value tradeoff assumptions are not explicit"],
+            "revisions": ["state ethical priority rule for conflict cases"],
+            "risks": ["hidden normative bias in objective selection"],
+            "questions": ["which fairness principle governs edge cases?"],
+            "evidence_needs": ["document stakeholder value constraints"],
+            "confidence": 0.58,
+        }
+        return self._validated(payload)
+
+
+class PsychologyModule(BasePerspectiveModule):
+    """Psychology perspective for behavior and cognition assumptions."""
+
+    name = "psychology"
+    version = "0.1"
+
+    def audit(
+        self,
+        artifact: dict[str, Any],
+        local_context: dict[str, Any],
+        unresolved_conflicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = {
+            "observations": ["behavioral assumptions rely on stable preference claims"],
+            "criticisms": ["limited treatment of cognitive load effects"],
+            "revisions": ["add bounded-rationality adjustment scenario"],
+            "risks": ["survey framing may trigger demand characteristics"],
+            "questions": ["what mechanisms reduce response fatigue bias?"],
+            "evidence_needs": ["collect manipulation-check outcomes"],
+            "confidence": 0.52,
+        }
+        return self._validated(payload)
+
+
+MODULE_REGISTRY: dict[str, type[BasePerspectiveModule]] = {
+    EconomicsModule.name: EconomicsModule,
+    PhilosophyModule.name: PhilosophyModule,
+    PsychologyModule.name: PsychologyModule,
+}
+
+
+def get_registered_module_class(name: str) -> type[BasePerspectiveModule] | None:
+    """Return registered module class by normalized name."""
+
+    return MODULE_REGISTRY.get(str(name).strip().lower())

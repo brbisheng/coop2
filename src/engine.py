@@ -69,6 +69,83 @@ def _derive_version(parent_ids: list[str]) -> str:
     return f"v{len(parent_ids) + 1}"
 
 
+
+
+def run_perspective_audit_batch(
+    *,
+    modules: list[Any],
+    artifact: dict[str, Any],
+    local_context: dict[str, Any],
+    unresolved_conflicts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Run all perspective modules and return validated structured outputs."""
+
+    from .perspectives import validate_perspective_output
+
+    results: list[dict[str, Any]] = []
+    for module in modules:
+        module_name = str(getattr(module, "name", module.__class__.__name__)).strip().lower()
+        payload = module.audit(artifact, local_context, unresolved_conflicts)
+        validate_perspective_output(payload)
+        results.append(
+            {
+                "module": module_name,
+                "module_version": str(getattr(module, "version", "unknown")),
+                "audit": payload,
+            }
+        )
+    return results
+
+
+def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate module outputs for event payloads and patch rationale generation."""
+
+    modules = [str(item.get("module", "")).strip() for item in audit_results if isinstance(item, dict)]
+    confidence_values = [
+        float(item.get("audit", {}).get("confidence"))
+        for item in audit_results
+        if isinstance(item, dict)
+    ]
+    avg_confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
+
+    observations: list[str] = []
+    criticisms: list[str] = []
+    revisions: list[str] = []
+    risks: list[str] = []
+    questions: list[str] = []
+    evidence_needs: list[str] = []
+
+    for item in audit_results:
+        if not isinstance(item, dict):
+            continue
+        audit = item.get("audit", {})
+        if not isinstance(audit, dict):
+            continue
+        observations.extend(str(x) for x in audit.get("observations", []))
+        criticisms.extend(str(x) for x in audit.get("criticisms", []))
+        revisions.extend(str(x) for x in audit.get("revisions", []))
+        risks.extend(str(x) for x in audit.get("risks", []))
+        questions.extend(str(x) for x in audit.get("questions", []))
+        evidence_needs.extend(str(x) for x in audit.get("evidence_needs", []))
+
+    rationale = (
+        f"modules={','.join(modules) or 'none'}; avg_confidence={avg_confidence:.2f}; "
+        f"revisions={len(revisions)}; risks={len(risks)}"
+    )
+
+    return {
+        "modules": modules,
+        "module_count": len(modules),
+        "avg_confidence": avg_confidence,
+        "observations": observations,
+        "criticisms": criticisms,
+        "revisions": revisions,
+        "risks": risks,
+        "questions": questions,
+        "evidence_needs": evidence_needs,
+        "rationale": rationale,
+    }
+
 def run_micro_deliberation(
     *,
     session_dir: str | Path,
@@ -80,6 +157,7 @@ def run_micro_deliberation(
     accepted_patches: list[dict[str, Any]] | None = None,
     unresolved_dissents: list[dict[str, Any]] | None = None,
     unresolved_dissent_saved: bool | None = None,
+    perspective_audits: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run one structured deliberation round and persist core records.
 
@@ -109,6 +187,8 @@ def run_micro_deliberation(
 
     accepted_patches = accepted_patches or []
     unresolved_dissents = unresolved_dissents or []
+    perspective_audits = perspective_audits or []
+    audit_summary = summarize_audit_batch(perspective_audits)
 
     latest_commit_ids = [
         str(item.get("commit_id"))
@@ -160,6 +240,8 @@ def run_micro_deliberation(
         "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 2,
+        "perspective_audits": perspective_audits,
+        "patch_rationale": audit_summary["rationale"],
     }
 
     event = {
@@ -178,6 +260,9 @@ def run_micro_deliberation(
         "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 2,
+        "perspective_audits": perspective_audits,
+        "patch_rationale": audit_summary["rationale"],
+        "audit_summary": audit_summary,
     }
 
     snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
@@ -199,6 +284,9 @@ def run_micro_deliberation(
             "dissent_patch_ids": dissent_patch_ids,
             "why_not_others": why_not_others,
             "schema_version": 2,
+            "perspective_audits": perspective_audits,
+            "patch_rationale": audit_summary["rationale"],
+            "audit_summary": audit_summary,
         }
     )
 
