@@ -133,6 +133,59 @@ def _derive_version(parent_ids: list[str]) -> str:
     return f"v{len(parent_ids) + 1}"
 
 
+def _persist_artifact_version(
+    root: Path,
+    *,
+    artifact_id: str,
+    version: str,
+    commit: dict[str, Any],
+    event: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    artifact_rel_path = Path("artifacts") / artifact_id / f"{version}.json"
+    artifact_payload = {
+        "artifact_id": artifact_id,
+        "version": version,
+        "commit_id": commit.get("commit_id"),
+        "event_id": event.get("event_id"),
+        "decision": commit.get("decision"),
+        "status": commit.get("status"),
+        "timestamp": commit.get("timestamp"),
+        "proposed_changes": commit.get("proposed_changes", []),
+        "schema_version": 3,
+    }
+    _write_json(root / artifact_rel_path, artifact_payload)
+    return artifact_rel_path.as_posix(), artifact_payload
+
+
+def load_artifact_version(
+    session_dir: str | Path,
+    *,
+    artifact_id: str,
+    version: str | None = None,
+) -> dict[str, Any]:
+    """Load one artifact version from artifacts/ layout.
+
+    When version is omitted, the snapshot artifact head pointer is used.
+    """
+
+    root = Path(session_dir)
+    snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
+
+    if version is None:
+        heads = snapshot.get("artifact_heads", {})
+        head = heads.get(artifact_id) if isinstance(heads, dict) else None
+        if isinstance(head, dict):
+            version = str(head.get("version", "")).strip() or None
+
+    if version is None:
+        raise ValueError(f"No artifact head pointer found for {artifact_id}")
+
+    payload = _read_json(root / "artifacts" / artifact_id / f"{version}.json")
+    if not payload:
+        raise FileNotFoundError(f"Artifact version not found: {artifact_id}@{version}")
+    return ensure_current_schema(payload)
+
+
 
 
 def run_perspective_audit_batch(
@@ -314,7 +367,7 @@ def run_micro_deliberation(
         "dissent_patch_ids": dissent_patch_ids,
         "why_not_others": why_not_others,
         "timestamp": now,
-        "schema_version": 2,
+        "schema_version": 3,
         "perspective_audits": perspective_audits,
         "patch_rationale": audit_summary["rationale"],
     }
@@ -334,7 +387,7 @@ def run_micro_deliberation(
         "dissent_patch_ids": dissent_patch_ids,
         "why_not_others": why_not_others,
         "timestamp": now,
-        "schema_version": 2,
+        "schema_version": 3,
         "perspective_audits": perspective_audits,
         "patch_rationale": audit_summary["rationale"],
         "audit_summary": audit_summary,
@@ -408,6 +461,24 @@ def run_micro_deliberation(
         latest_commits = []
     latest_commits = [*latest_commits, commit_id]
 
+    artifact_ref, _artifact_payload = _persist_artifact_version(
+        root,
+        artifact_id=artifact_id,
+        version=version,
+        commit=commit,
+        event=event,
+    )
+
+    artifact_heads = snapshot.get("artifact_heads", {})
+    if not isinstance(artifact_heads, dict):
+        artifact_heads = {}
+    artifact_heads[artifact_id] = {
+        "artifact_id": artifact_id,
+        "version": version,
+        "path": artifact_ref,
+        "commit_id": commit_id,
+    }
+
     snapshot.update(
         {
             "snapshot_id": snapshot.get("snapshot_id", f"snap_{uuid4().hex[:10]}"),
@@ -420,12 +491,20 @@ def run_micro_deliberation(
             "reasons": reasons,
             "dissent_patch_ids": dissent_patch_ids,
             "why_not_others": why_not_others,
-            "schema_version": 2,
+            "schema_version": 3,
+            "artifact_heads": artifact_heads,
             "perspective_audits": perspective_audits,
             "patch_rationale": audit_summary["rationale"],
             "audit_summary": audit_summary,
         }
     )
+
+    commit["artifact_ref"] = artifact_ref
+    event["artifact_ref"] = artifact_ref
+
+    commit = ensure_current_schema(commit)
+    event = ensure_current_schema(event)
+    snapshot = ensure_current_schema(snapshot)
 
     _append_jsonl(root / "event_log.jsonl", [*step_events, event])
     _append_jsonl(root / "commits.jsonl", [commit])
@@ -459,13 +538,19 @@ def build_continuation_pack(
 
     root = Path(session_dir)
     snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
+    resolved_target_artifact_id = target_artifact_id
+    heads = snapshot.get("artifact_heads", {})
+    if isinstance(heads, dict) and target_artifact_id in heads:
+        head = heads.get(target_artifact_id)
+        if isinstance(head, dict):
+            resolved_target_artifact_id = str(head.get("artifact_id", target_artifact_id))
     commits = [ensure_current_schema(entry) for entry in _read_jsonl(root / "commits.jsonl")]
     events = [ensure_current_schema(entry) for entry in _read_jsonl(root / "event_log.jsonl")]
     dissents = [ensure_current_schema(entry) for entry in _read_dissent_cards(root / "dissent")]
 
     minimal_context, unresolved_conflicts = build_minimal_context(
         snapshot,
-        target_artifact_id,
+        resolved_target_artifact_id,
         commits,
         dissents,
         events,

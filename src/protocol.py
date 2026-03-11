@@ -8,7 +8,7 @@ from math import sqrt
 from typing import Any
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 DEFAULT_PERSONA_DIVERSITY_THRESHOLD = 0.25
 
 

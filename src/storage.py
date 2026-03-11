@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any
 
 from .protocol import CURRENT_SCHEMA_VERSION, ModelValidationError
@@ -96,6 +97,56 @@ def _migrate_v1_to_v2(record: dict[str, Any]) -> dict[str, Any]:
     return upgraded
 
 
+def _version_from_artifact_id(artifact_id: str) -> str | None:
+    match = re.search(r"_v(\d+)$", artifact_id)
+    if match is None:
+        return None
+    return f"v{match.group(1)}"
+
+
+def _migrate_v2_to_v3(record: dict[str, Any]) -> dict[str, Any]:
+    """Add artifact head pointers used by session artifact playback."""
+    upgraded = deepcopy(record)
+
+    if "snapshot_id" in upgraded:
+        artifact_heads = upgraded.get("artifact_heads")
+        if not isinstance(artifact_heads, dict):
+            artifact_heads = {}
+
+        lineages = upgraded.get("artifact_lineages")
+        if isinstance(lineages, dict):
+            for lineage_key, branch in lineages.items():
+                if not isinstance(branch, list) or not branch:
+                    continue
+                latest = str(branch[-1]).strip()
+                if not latest:
+                    continue
+                version = _version_from_artifact_id(latest)
+                if not version:
+                    continue
+                lineage_id = str(lineage_key).strip() or latest
+                artifact_heads.setdefault(
+                    lineage_id,
+                    {
+                        "artifact_id": latest,
+                        "version": version,
+                        "path": f"artifacts/{lineage_id}/{version}.json",
+                    },
+                )
+
+        if artifact_heads:
+            upgraded["artifact_heads"] = artifact_heads
+
+    if "commit_id" in upgraded and "artifact_id" in upgraded and "version" in upgraded:
+        artifact_id = str(upgraded.get("artifact_id", "")).strip()
+        version = str(upgraded.get("version", "")).strip()
+        if artifact_id and version and "artifact_ref" not in upgraded:
+            upgraded["artifact_ref"] = f"artifacts/{artifact_id}/{version}.json"
+
+    return upgraded
+
+
 _MIGRATION_STEPS = {
     1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
 }

@@ -73,6 +73,8 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert len(commits) == 1
     assert len(events) == 6
     assert commits[0]["commit_id"] in snapshot["latest_commits"]
+    assert snapshot["artifact_heads"]["artifact_main_v3"]["version"] == "v1"
+    assert (session / "artifacts" / "artifact_main_v3" / "v1.json").exists()
     assert commits[0]["proposed_changes"] == [{"mechanism": "clarified"}]
     assert commits[0]["reasons"]
     assert commits[0]["why_not_others"]
