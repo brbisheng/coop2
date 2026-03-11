@@ -86,7 +86,7 @@ def test_long_history_continuation_trim_keeps_unresolved_dissent(tmp_path: Path)
     )
 
     assert pack.goal == "resolve_specific_conflict"
-    assert pack.arena == "policy"
+    assert pack.arena == "empirical_grounding"
     assert pack.minimal_context["priority_open_issues"][0]["issue_id"] == "iss-1"
 
     loaded_dissent_ids = {item["dissent_id"] for item in pack.minimal_context["dissents"]}

@@ -56,7 +56,7 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     )
 
     assert result["commit"]["allowed"] is True
-    assert result["commit"]["decision"] == "commit"
+    assert result["commit"]["decision"] == "accept"
 
     commits = _read_jsonl(session / "commits.jsonl")
     events = _read_jsonl(session / "event_log.jsonl")
