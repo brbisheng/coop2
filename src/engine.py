@@ -17,12 +17,23 @@ from .storage import ensure_current_schema
 
 
 CONTINUE_LIKE_ACTIONS = {"continue", "continue_discussion", "discuss"}
+ROUND_STEPS = ("proposal", "critique_a", "critique_b", "repair", "decision")
+
+ROUND_EVENT_TYPE = "deliberation.round"
+STEP_EVENT_TYPES = {
+    "proposal": "deliberation.proposal",
+    "critique_a": "deliberation.critique_a",
+    "critique_b": "deliberation.critique_b",
+    "repair": "deliberation.repair",
+    "decision": "deliberation.decision",
+}
 
 
 def _build_round_input(
     critiques: list[dict[str, Any]],
     round_input: dict[str, Any] | None,
     accepted_patches: list[dict[str, Any]] | None,
+    proposed_action: str,
 ) -> dict[str, Any]:
     """Normalize legacy callsites into structured round input."""
 
@@ -31,8 +42,20 @@ def _build_round_input(
     normalized.setdefault("critique_a", critiques[0] if len(critiques) >= 1 else None)
     normalized.setdefault("critique_b", critiques[1] if len(critiques) >= 2 else None)
     normalized.setdefault("repair", {"present": bool(accepted_patches)})
-    normalized.setdefault("governor_decision", None)
+    normalized.setdefault("decision", {"action": proposed_action})
     return normalized
+
+
+def _missing_round_steps(round_input: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for step in ROUND_STEPS:
+        value = round_input.get(step)
+        if value is None:
+            missing.append(step)
+            continue
+        if value in ({}, []):
+            missing.append(step)
+    return missing
 
 
 def _required_obligation_report(arena_name: str, round_input: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
@@ -54,7 +77,7 @@ def _required_obligation_report(arena_name: str, round_input: dict[str, Any]) ->
         "propose": _present(round_input.get("proposal")),
         "independent_critiques": critiques_present,
         "repair_or_merge": _present(round_input.get("repair")),
-        "governor_decision": _present(round_input.get("governor_decision")),
+        "decision": _present(round_input.get("decision")),
     }
 
     missing: list[str] = []
@@ -289,10 +312,18 @@ def run_micro_deliberation(
 
     action = proposed_action.strip().lower()
     arena_name = parse_enum(arena, DebateArena, "arena").value
-    round_input_data = _build_round_input(critiques, round_input, accepted_patches)
+    round_input_data = _build_round_input(critiques, round_input, accepted_patches, proposed_action=action)
+    missing_steps = _missing_round_steps(round_input_data)
     missing_obligations, obligation_report = _required_obligation_report(arena_name, round_input_data)
 
-    if missing_obligations:
+    if missing_steps:
+        commit_allowed = action in {DebateDecision.PARK.value, *CONTINUE_LIKE_ACTIONS}
+        reason = (
+            "structured round input incomplete: "
+            + ", ".join(missing_steps)
+            + "; only park/continue allowed"
+        )
+    elif missing_obligations:
         commit_allowed = action in {DebateDecision.PARK.value, *CONTINUE_LIKE_ACTIONS}
         reason = (
             "required obligations not satisfied: "
@@ -380,7 +411,7 @@ def run_micro_deliberation(
         "event_id": event_id,
         "artifact_id": artifact_id,
         "arena": arena_name,
-        "type": "micro_deliberation_round",
+        "type": ROUND_EVENT_TYPE,
         "decision": decision,
         "commit_id": commit_id,
         "parent_ids": parent_ids,
@@ -402,7 +433,7 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
-            "type": "micro_deliberation_step",
+            "type": STEP_EVENT_TYPES["proposal"],
             "round_event_id": event_id,
             "step": "proposal",
             "payload": round_input_data.get("proposal"),
@@ -412,7 +443,7 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
-            "type": "micro_deliberation_step",
+            "type": STEP_EVENT_TYPES["critique_a"],
             "round_event_id": event_id,
             "step": "critique_a",
             "payload": round_input_data.get("critique_a"),
@@ -422,7 +453,7 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
-            "type": "micro_deliberation_step",
+            "type": STEP_EVENT_TYPES["critique_b"],
             "round_event_id": event_id,
             "step": "critique_b",
             "payload": round_input_data.get("critique_b"),
@@ -432,7 +463,7 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
-            "type": "micro_deliberation_step",
+            "type": STEP_EVENT_TYPES["repair"],
             "round_event_id": event_id,
             "step": "repair",
             "payload": round_input_data.get("repair"),
@@ -442,13 +473,14 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
-            "type": "micro_deliberation_step",
+            "type": STEP_EVENT_TYPES["decision"],
             "round_event_id": event_id,
-            "step": "governor_decision",
+            "step": "decision",
             "payload": {
                 "decision": decision,
                 "allowed": commit_allowed,
                 "reason": reason,
+                "missing_steps": missing_steps,
                 "missing_obligations": missing_obligations,
                 "obligation_report": obligation_report,
             },

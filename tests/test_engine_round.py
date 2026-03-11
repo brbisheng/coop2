@@ -89,12 +89,16 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert artifact_v1["proposed_changes"]
     assert artifact_v1["why_not_others"]
     assert artifact_v1["dissent_patch_ids"]
-    assert {event["step"] for event in events if event.get("type") == "micro_deliberation_step"} == {
+    assert {
+        event["step"]
+        for event in events
+        if event.get("type", "").startswith("deliberation.") and event.get("step")
+    } == {
         "proposal",
         "critique_a",
         "critique_b",
         "repair",
-        "governor_decision",
+        "decision",
     }
     assert (session / "dissent" / "d-1.json").exists()
 
@@ -154,6 +158,13 @@ def test_missing_obligations_only_allow_park_or_continue(tmp_path: Path):
         arena="mechanism",
         proposed_action="commit",
         critiques=[{"attack_labels": ["id-risk"]}],
+        round_input={
+            "proposal": {"present": True},
+            "critique_a": {"present": True},
+            "critique_b": {"present": False},
+            "repair": {"present": True},
+            "decision": {"action": "commit"},
+        },
         panel_state=panel_state,
         accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
         unresolved_dissents=[],
@@ -176,6 +187,92 @@ def test_missing_obligations_only_allow_park_or_continue(tmp_path: Path):
     )
     assert park_attempt["commit"]["allowed"] is True
     assert park_attempt["commit"]["decision"] == "park"
+
+
+def test_structured_round_complete_path_and_standardized_event_types(tmp_path: Path):
+    session = tmp_path / "session_006"
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+    round_input = {
+        "proposal": {"claim": "A"},
+        "critique_a": {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        "critique_b": {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+        "repair": {"present": True, "proposed_changes": {"mechanism": "clarified"}},
+        "decision": {"action": "commit"},
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_structured",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=[round_input["critique_a"], round_input["critique_b"]],
+        round_input=round_input,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+    )
+
+    assert result["commit"]["allowed"] is True
+    events = _read_jsonl(session / "event_log.jsonl")
+    types = {item["type"] for item in events}
+    assert {
+        "deliberation.round",
+        "deliberation.proposal",
+        "deliberation.critique_a",
+        "deliberation.critique_b",
+        "deliberation.repair",
+        "deliberation.decision",
+    }.issubset(types)
+
+
+def test_structured_round_missing_step_fails_with_readable_reason(tmp_path: Path):
+    session = tmp_path / "session_007"
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_structured",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=[{"attack_labels": ["id-risk"]}, {"attack_labels": ["measurement-risk"]}],
+        round_input={
+            "proposal": {"claim": "A"},
+            "critique_a": {"attack_labels": ["id-risk"]},
+            "critique_b": {"attack_labels": ["measurement-risk"]},
+            "repair": None,
+            "decision": {"action": "commit"},
+        },
+        panel_state=panel_state,
+        accepted_patches=[],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+    )
+
+    assert result["commit"]["allowed"] is False
+    assert result["commit"]["decision"] == "park"
+    assert "structured round input incomplete" in result["commit"]["reason"]
+    assert "repair" in result["commit"]["reason"]
 
 
 def test_lineage_chain_can_be_reconstructed_from_parent_ids(tmp_path: Path):
