@@ -56,8 +56,8 @@ def validate_precommit_action(
     unresolved = unresolved_dissents or []
     dissent_gate_ok = (not unresolved) or (unresolved_dissent_saved is True)
 
-    soul_policy_ok = True
-    if isinstance(raw_agents, list):
+    soul_policy_ok = not soul_overrides_governance(panel_state.get("soul_profile", {}))
+    if soul_policy_ok and isinstance(raw_agents, list):
         for agent in raw_agents:
             if not isinstance(agent, dict):
                 continue

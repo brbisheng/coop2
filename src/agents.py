@@ -7,7 +7,7 @@ from typing import Any
 
 from .human_base import HumanBaseProfile
 from .perspectives import PerspectiveModule, get_registered_module_class
-from .soul import SoulProvider, SoulValidationError, validate_soul_payload
+from .soul import SoulProvider, SoulValidationError, validate_soul_profile
 
 
 class AgentConfigError(ValueError):
@@ -88,8 +88,8 @@ def build_agent_from_config(
     provided_soul_raw = soul_provider.get_soul_profile(agent_id) if soul_provider else None
 
     try:
-        base_soul = validate_soul_payload(base_soul_raw if isinstance(base_soul_raw, dict) else None)
-        provided_soul = validate_soul_payload(provided_soul_raw)
+        base_soul = validate_soul_profile(base_soul_raw if isinstance(base_soul_raw, dict) else None)
+        provided_soul = validate_soul_profile(provided_soul_raw)
     except SoulValidationError as exc:
         raise AgentConfigError(str(exc)) from exc
 
