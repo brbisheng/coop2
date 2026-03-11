@@ -2,5 +2,7 @@
   "dissent_id": "d-001",
   "artifact_id": "artifact_main_v1",
   "status": "open",
-  "message": "旧版本的识别假设仍未解决"
+  "message": "旧版本的识别假设仍未解决",
+  "why_not": "主干目前仅修正定义，尚未反驳该异议",
+  "related_commit_ids": ["c-001", "c-002"]
 }

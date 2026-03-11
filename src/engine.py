@@ -65,6 +65,10 @@ def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _derive_version(parent_ids: list[str]) -> str:
+    return f"v{len(parent_ids) + 1}"
+
+
 def run_micro_deliberation(
     *,
     session_dir: str | Path,
@@ -103,6 +107,42 @@ def run_micro_deliberation(
     event_id = f"event_{uuid4().hex[:10]}"
     now = _now_iso()
 
+    accepted_patches = accepted_patches or []
+    unresolved_dissents = unresolved_dissents or []
+
+    latest_commit_ids = [
+        str(item.get("commit_id"))
+        for item in _read_jsonl(root / "commits.jsonl")
+        if isinstance(item, dict) and str(item.get("artifact_id")) == artifact_id and item.get("commit_id")
+    ]
+    parent_ids = latest_commit_ids[-1:] if latest_commit_ids else []
+    open_issues = [
+        str(item.get("message", item.get("summary", ""))).strip()
+        for item in unresolved_dissents
+        if isinstance(item, dict) and str(item.get("status", "")).lower() == "open"
+    ]
+    open_issues = [issue for issue in open_issues if issue]
+    proposed_changes = [
+        patch.get("proposed_changes", {})
+        for patch in accepted_patches
+        if isinstance(patch, dict) and isinstance(patch.get("proposed_changes"), dict)
+    ]
+    dissent_patch_ids = [
+        str(item.get("dissent_id"))
+        for item in unresolved_dissents
+        if isinstance(item, dict) and item.get("dissent_id")
+    ]
+    why_not_others = [
+        str(item.get("why_not", item.get("counterfactual", ""))).strip()
+        for item in unresolved_dissents
+        if isinstance(item, dict)
+    ]
+    why_not_others = [item for item in why_not_others if item] or [
+        "no explicit alternatives were recorded in this round"
+    ]
+    reasons = [str(reason).strip() for reason in [reason] if str(reason).strip()]
+    version = _derive_version(parent_ids)
+
     commit = {
         "commit_id": commit_id,
         "artifact_id": artifact_id,
@@ -111,6 +151,13 @@ def run_micro_deliberation(
         "allowed": commit_allowed,
         "reason": reason,
         "status": "applied" if commit_allowed else "pending",
+        "parent_ids": parent_ids,
+        "version": version,
+        "open_issues": open_issues,
+        "proposed_changes": proposed_changes,
+        "reasons": reasons,
+        "dissent_patch_ids": dissent_patch_ids,
+        "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 2,
     }
@@ -122,6 +169,13 @@ def run_micro_deliberation(
         "type": "micro_deliberation_round",
         "decision": decision,
         "commit_id": commit_id,
+        "parent_ids": parent_ids,
+        "version": version,
+        "open_issues": open_issues,
+        "proposed_changes": proposed_changes,
+        "reasons": reasons,
+        "dissent_patch_ids": dissent_patch_ids,
+        "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 2,
     }
@@ -137,6 +191,13 @@ def run_micro_deliberation(
             "snapshot_id": snapshot.get("snapshot_id", f"snap_{uuid4().hex[:10]}"),
             "latest_commits": latest_commits,
             "next_recommended_arena": arena_name,
+            "parent_ids": parent_ids,
+            "version": version,
+            "open_issues": unresolved_dissents,
+            "proposed_changes": accepted_patches,
+            "reasons": reasons,
+            "dissent_patch_ids": dissent_patch_ids,
+            "why_not_others": why_not_others,
             "schema_version": 2,
         }
     )

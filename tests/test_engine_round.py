@@ -51,7 +51,15 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
         critiques=critiques,
         panel_state=panel_state,
         accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
-        unresolved_dissents=[{"dissent_id": "d-1", "artifact_id": "artifact_main_v2", "status": "open"}],
+        unresolved_dissents=[
+            {
+                "dissent_id": "d-1",
+                "artifact_id": "artifact_main_v2",
+                "status": "open",
+                "message": "identification assumption unresolved",
+                "why_not": "branch-B removed key mechanism variable",
+            }
+        ],
         unresolved_dissent_saved=True,
     )
 
@@ -65,6 +73,9 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert len(commits) == 1
     assert len(events) == 1
     assert commits[0]["commit_id"] in snapshot["latest_commits"]
+    assert commits[0]["proposed_changes"] == [{"mechanism": "clarified"}]
+    assert commits[0]["reasons"]
+    assert commits[0]["why_not_others"]
     assert (session / "dissent" / "d-1.json").exists()
 
 
@@ -105,3 +116,51 @@ def test_run_micro_round_rejects_commit_when_invariants_fail(tmp_path: Path):
     assert result["commit"]["allowed"] is False
     assert result["commit"]["decision"] == "park"
     assert "only park/continue_discussion allowed" in result["commit"]["reason"]
+
+
+def test_lineage_chain_can_be_reconstructed_from_parent_ids(tmp_path: Path):
+    session = tmp_path / "session_003"
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.4, "module_weights": {"economics": 0.6}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+        ]
+    }
+
+    first = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v3",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "v1"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+    )
+    second = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v3",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "v2"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+    )
+
+    assert second["commit"]["parent_ids"] == [first["commit"]["commit_id"]]
+    assert second["commit"]["version"] == "v2"
