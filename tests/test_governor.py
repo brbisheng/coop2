@@ -170,3 +170,45 @@ def test_validate_precommit_action_allows_commit_when_all_gates_pass():
 
     assert ok is True
     assert reason == "precommit checks passed"
+
+
+def test_validate_precommit_action_fails_when_soul_overrides_governance_fields():
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+            "evidence_refs": ["paper-1"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+            "evidence_refs": ["dataset-2"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {
+                "agent_id": "a1",
+                "human_base_weight": 0.5,
+                "module_weights": {"economics": 0.5},
+                "soul_profile": {"style": {"min_critiques": 1}},
+            },
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+    patches = [{"proposed_changes": {"mechanism": "updated", "outcome_vars": ["x"]}}]
+
+    ok, reason = validate_precommit_action(
+        "commit",
+        critiques,
+        panel_state,
+        accepted_patches=patches,
+        unresolved_dissents=[],
+        unresolved_dissent_saved=True,
+    )
+
+    assert ok is False
+    assert "soul profile cannot override commit rules/min critique constraints" in reason

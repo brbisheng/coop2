@@ -8,6 +8,7 @@ from .protocol import (
     DEFAULT_PERSONA_DIVERSITY_THRESHOLD,
     is_independent_critique,
     persona_diversity_score,
+    soul_overrides_governance,
 )
 
 
@@ -54,12 +55,22 @@ def validate_precommit_action(
     unresolved = unresolved_dissents or []
     dissent_gate_ok = (not unresolved) or (unresolved_dissent_saved is True)
 
+    soul_policy_ok = True
+    if isinstance(raw_agents, list):
+        for agent in raw_agents:
+            if not isinstance(agent, dict):
+                continue
+            if soul_overrides_governance(agent.get("soul_profile", {})):
+                soul_policy_ok = False
+                break
+
     gates_passed = (
         unique_agents >= 3
         and independent
         and diversity >= diversity_threshold
         and has_field_targeted_patch
         and dissent_gate_ok
+        and soul_policy_ok
     )
 
     if gates_passed:
@@ -79,6 +90,8 @@ def validate_precommit_action(
         reasons.append("accepted patch must target explicit artifact fields")
     if not dissent_gate_ok:
         reasons.append("unresolved dissent must be saved before commit")
+    if not soul_policy_ok:
+        reasons.append("soul profile cannot override commit rules/min critique constraints")
 
     reason_text = "; ".join(reasons) if reasons else "precommit checks failed"
     return (False, f"{reason_text}; only park/continue_discussion allowed")

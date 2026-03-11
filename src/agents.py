@@ -7,6 +7,7 @@ from typing import Any
 
 from .human_base import HumanBaseProfile
 from .perspectives import PerspectiveModule, get_registered_module_class
+from .soul import SoulProvider, SoulValidationError, validate_soul_payload
 
 
 class AgentConfigError(ValueError):
@@ -58,7 +59,10 @@ def _instantiate_modules(module_weights: dict[str, float]) -> list[PerspectiveMo
     return modules
 
 
-def build_agent_from_config(raw: dict[str, Any]) -> AgentInstance:
+def build_agent_from_config(
+    raw: dict[str, Any],
+    soul_provider: SoulProvider | None = None,
+) -> AgentInstance:
     """Build an AgentInstance from config mapping.
 
     HumanBase is mandatory by design.
@@ -80,13 +84,25 @@ def build_agent_from_config(raw: dict[str, Any]) -> AgentInstance:
     module_weights = _normalize_weights(raw.get("module_weights", {}))
     modules = _instantiate_modules(module_weights)
 
+    base_soul_raw = raw.get("soul_profile")
+    provided_soul_raw = soul_provider.get_soul_profile(agent_id) if soul_provider else None
+
+    try:
+        base_soul = validate_soul_payload(base_soul_raw if isinstance(base_soul_raw, dict) else None)
+        provided_soul = validate_soul_payload(provided_soul_raw)
+    except SoulValidationError as exc:
+        raise AgentConfigError(str(exc)) from exc
+
+    merged_soul = base_soul.to_dict()
+    merged_soul.update(provided_soul.to_dict())
+
     return AgentInstance(
         agent_id=agent_id,
         human_base=human_base,
         perspective_modules=modules,
         seat_policy=dict(raw.get("seat_policy", {})),
         memory_view=dict(raw.get("memory_view", {})),
-        soul_profile=dict(raw.get("soul_profile", {})),
+        soul_profile=merged_soul,
         module_weights=module_weights,
     )
 
