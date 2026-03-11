@@ -39,5 +39,5 @@ def test_persona_diversity_score_higher_for_distinct_personas():
             {"human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
         ]
     }
-
     assert persona_diversity_score(high_diversity) > persona_diversity_score(low_diversity)
+
