@@ -53,3 +53,27 @@ def test_module_registry_returns_mvp_modules():
         assert module_cls is not None
         payload = module_cls().audit({}, {}, [])
         assert "confidence" in payload
+
+
+def test_register_perspective_module_supports_dynamic_registration():
+    from src.perspectives import BasePerspectiveModule, register_perspective_module
+
+    class _TempModule(BasePerspectiveModule):
+        name = "temp_module"
+        version = "0.1"
+
+        def audit(self, artifact, local_context, unresolved_conflicts):
+            return self._validated(
+                {
+                    "observations": [],
+                    "criticisms": [],
+                    "revisions": [],
+                    "risks": [],
+                    "questions": [],
+                    "evidence_needs": [],
+                    "confidence": 0.1,
+                }
+            )
+
+    register_perspective_module(_TempModule)
+    assert get_registered_module_class("temp_module") is _TempModule
