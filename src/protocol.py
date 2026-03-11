@@ -12,6 +12,37 @@ CURRENT_SCHEMA_VERSION = 2
 DEFAULT_PERSONA_DIVERSITY_THRESHOLD = 0.25
 
 
+SOUL_PROTECTED_FIELDS = {
+    "commit_rules",
+    "commit_rule",
+    "min_critiques",
+    "minimum_critiques",
+    "diversity_threshold",
+}
+
+
+def soul_overrides_governance(payload: dict[str, Any]) -> bool:
+    """Return True when soul payload attempts to override governance constraints."""
+
+    if not isinstance(payload, dict):
+        return False
+
+    forbidden = {key for key in payload if str(key).strip().lower() in SOUL_PROTECTED_FIELDS}
+    if forbidden:
+        return True
+
+    for key in ("style", "temperament"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            nested_forbidden = {
+                subkey for subkey in nested if str(subkey).strip().lower() in SOUL_PROTECTED_FIELDS
+            }
+            if nested_forbidden:
+                return True
+
+    return False
+
+
 class ModelValidationError(ValueError):
     """Raised when a record does not satisfy model constraints."""
 
