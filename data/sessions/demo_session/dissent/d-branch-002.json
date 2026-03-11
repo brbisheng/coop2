@@ -1,0 +1,8 @@
+{
+  "dissent_id": "d-branch-002",
+  "artifact_id": "artifact_main_branch_b_v3",
+  "status": "open",
+  "message": "分支B认为机制方向应反转",
+  "why_not": "主干证据不足以接受反向机制，但也不足以否定",
+  "related_commit_ids": ["c-branch-003", "c-002"]
+}

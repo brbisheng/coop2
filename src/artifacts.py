@@ -24,6 +24,13 @@ class ArtifactCard:
     status: ArtifactStatus | str
     author: str | None = None
     tags: list[str] = field(default_factory=list)
+    parent_ids: list[str] | None = None
+    version: str | None = None
+    open_issues: list[str] | None = None
+    proposed_changes: dict[str, Any] | None = None
+    reasons: str | None = None
+    dissent_patch_ids: list[str] | None = None
+    why_not_others: str | None = None
     schema_version: int = CURRENT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -35,7 +42,35 @@ class ArtifactCard:
             raise ModelValidationError("author must be str | None")
         if any(not isinstance(tag, str) or not tag.strip() for tag in self.tags):
             raise ModelValidationError("tags must be non-empty strings")
+        self._validate_traceability_fields()
         self._validate_schema_version()
+
+    def _validate_traceability_fields(self) -> None:
+        if self.parent_ids is None:
+            raise ModelValidationError("parent_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.parent_ids):
+            raise ModelValidationError("parent_ids must contain non-empty strings")
+        if self.version is None:
+            raise ModelValidationError("version is required")
+        self._require_non_empty("version", self.version)
+        if self.open_issues is None:
+            raise ModelValidationError("open_issues is required")
+        if any(not isinstance(issue, str) or not issue.strip() for issue in self.open_issues):
+            raise ModelValidationError("open_issues must contain non-empty strings")
+        if self.proposed_changes is None:
+            raise ModelValidationError("proposed_changes is required")
+        if not isinstance(self.proposed_changes, dict):
+            raise ModelValidationError("proposed_changes must be dict[str, Any]")
+        if self.reasons is None:
+            raise ModelValidationError("reasons is required")
+        self._require_non_empty("reasons", self.reasons)
+        if self.dissent_patch_ids is None:
+            raise ModelValidationError("dissent_patch_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.dissent_patch_ids):
+            raise ModelValidationError("dissent_patch_ids must contain non-empty strings")
+        if self.why_not_others is None:
+            raise ModelValidationError("why_not_others is required")
+        self._require_non_empty("why_not_others", self.why_not_others)
 
     def _validate_schema_version(self) -> None:
         if not isinstance(self.schema_version, int) or self.schema_version < 1:
@@ -53,6 +88,13 @@ class DeltaPatch:
     target_artifact_id: str
     diff: str
     proposer: str
+    parent_ids: list[str] | None = None
+    version: str | None = None
+    open_issues: list[str] | None = None
+    proposed_changes: dict[str, Any] | None = None
+    reasons: str | None = None
+    dissent_patch_ids: list[str] | None = None
+    why_not_others: str | None = None
     rationale: str | None = None
     schema_version: int = CURRENT_SCHEMA_VERSION
 
@@ -61,9 +103,37 @@ class DeltaPatch:
         self._require_non_empty("target_artifact_id", self.target_artifact_id)
         self._require_non_empty("diff", self.diff)
         self._require_non_empty("proposer", self.proposer)
+        self._validate_traceability_fields()
         if self.rationale is not None and not isinstance(self.rationale, str):
             raise ModelValidationError("rationale must be str | None")
         self._validate_schema_version()
+
+    def _validate_traceability_fields(self) -> None:
+        if self.parent_ids is None:
+            raise ModelValidationError("parent_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.parent_ids):
+            raise ModelValidationError("parent_ids must contain non-empty strings")
+        if self.version is None:
+            raise ModelValidationError("version is required")
+        self._require_non_empty("version", self.version)
+        if self.open_issues is None:
+            raise ModelValidationError("open_issues is required")
+        if any(not isinstance(issue, str) or not issue.strip() for issue in self.open_issues):
+            raise ModelValidationError("open_issues must contain non-empty strings")
+        if self.proposed_changes is None:
+            raise ModelValidationError("proposed_changes is required")
+        if not isinstance(self.proposed_changes, dict):
+            raise ModelValidationError("proposed_changes must be dict[str, Any]")
+        if self.reasons is None:
+            raise ModelValidationError("reasons is required")
+        self._require_non_empty("reasons", self.reasons)
+        if self.dissent_patch_ids is None:
+            raise ModelValidationError("dissent_patch_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.dissent_patch_ids):
+            raise ModelValidationError("dissent_patch_ids must contain non-empty strings")
+        if self.why_not_others is None:
+            raise ModelValidationError("why_not_others is required")
+        self._require_non_empty("why_not_others", self.why_not_others)
 
     def _validate_schema_version(self) -> None:
         if not isinstance(self.schema_version, int) or self.schema_version < 1:
@@ -111,6 +181,13 @@ class CommitRecord:
     commit_id: str
     patch_ids: list[str]
     status: CommitStatus | str
+    parent_ids: list[str] | None = None
+    version: str | None = None
+    open_issues: list[str] | None = None
+    proposed_changes: dict[str, Any] | None = None
+    reasons: str | None = None
+    dissent_patch_ids: list[str] | None = None
+    why_not_others: str | None = None
     message: str | None = None
     created_at: str | None = None
     schema_version: int = CURRENT_SCHEMA_VERSION
@@ -120,6 +197,7 @@ class CommitRecord:
         if any(not isinstance(pid, str) or not pid.strip() for pid in self.patch_ids):
             raise ModelValidationError("patch_ids must contain non-empty strings")
         self.status = parse_enum(str(self.status), CommitStatus, "status")
+        self._validate_traceability_fields()
         if self.message is not None and not isinstance(self.message, str):
             raise ModelValidationError("message must be str | None")
         if self.created_at is not None and not isinstance(self.created_at, str):
@@ -129,6 +207,33 @@ class CommitRecord:
     def _validate_schema_version(self) -> None:
         if not isinstance(self.schema_version, int) or self.schema_version < 1:
             raise ModelValidationError("schema_version must be a positive integer")
+
+    def _validate_traceability_fields(self) -> None:
+        if self.parent_ids is None:
+            raise ModelValidationError("parent_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.parent_ids):
+            raise ModelValidationError("parent_ids must contain non-empty strings")
+        if self.version is None:
+            raise ModelValidationError("version is required")
+        self._require_non_empty("version", self.version)
+        if self.open_issues is None:
+            raise ModelValidationError("open_issues is required")
+        if any(not isinstance(issue, str) or not issue.strip() for issue in self.open_issues):
+            raise ModelValidationError("open_issues must contain non-empty strings")
+        if self.proposed_changes is None:
+            raise ModelValidationError("proposed_changes is required")
+        if not isinstance(self.proposed_changes, dict):
+            raise ModelValidationError("proposed_changes must be dict[str, Any]")
+        if self.reasons is None:
+            raise ModelValidationError("reasons is required")
+        self._require_non_empty("reasons", self.reasons)
+        if self.dissent_patch_ids is None:
+            raise ModelValidationError("dissent_patch_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.dissent_patch_ids):
+            raise ModelValidationError("dissent_patch_ids must contain non-empty strings")
+        if self.why_not_others is None:
+            raise ModelValidationError("why_not_others is required")
+        self._require_non_empty("why_not_others", self.why_not_others)
 
     @staticmethod
     def _require_non_empty(name: str, value: str) -> None:
@@ -143,6 +248,13 @@ class Snapshot:
     patches: list[DeltaPatch] = field(default_factory=list)
     debate_turns: list[DebateTurn] = field(default_factory=list)
     commits: list[CommitRecord] = field(default_factory=list)
+    parent_ids: list[str] | None = None
+    version: str | None = None
+    open_issues: list[dict[str, Any]] | None = None
+    proposed_changes: list[dict[str, Any]] | None = None
+    reasons: list[str] | None = None
+    dissent_patch_ids: list[str] | None = None
+    why_not_others: list[str] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     schema_version: int = CURRENT_SCHEMA_VERSION
 
@@ -150,8 +262,38 @@ class Snapshot:
         self._require_non_empty("snapshot_id", self.snapshot_id)
         if not isinstance(self.metadata, dict):
             raise ModelValidationError("metadata must be dict[str, Any]")
+        self._validate_traceability_fields()
         self._validate_schema_version()
         self.validate_references()
+
+    def _validate_traceability_fields(self) -> None:
+        if self.parent_ids is None:
+            raise ModelValidationError("parent_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.parent_ids):
+            raise ModelValidationError("parent_ids must contain non-empty strings")
+        if self.version is None:
+            raise ModelValidationError("version is required")
+        self._require_non_empty("version", self.version)
+        if self.open_issues is None:
+            raise ModelValidationError("open_issues is required")
+        if any(not isinstance(issue, dict) for issue in self.open_issues):
+            raise ModelValidationError("open_issues must contain dict items")
+        if self.proposed_changes is None:
+            raise ModelValidationError("proposed_changes is required")
+        if any(not isinstance(change, dict) for change in self.proposed_changes):
+            raise ModelValidationError("proposed_changes must contain dict items")
+        if self.reasons is None:
+            raise ModelValidationError("reasons is required")
+        if any(not isinstance(reason, str) or not reason.strip() for reason in self.reasons):
+            raise ModelValidationError("reasons must contain non-empty strings")
+        if self.dissent_patch_ids is None:
+            raise ModelValidationError("dissent_patch_ids is required")
+        if any(not isinstance(pid, str) or not pid.strip() for pid in self.dissent_patch_ids):
+            raise ModelValidationError("dissent_patch_ids must contain non-empty strings")
+        if self.why_not_others is None:
+            raise ModelValidationError("why_not_others is required")
+        if any(not isinstance(item, str) or not item.strip() for item in self.why_not_others):
+            raise ModelValidationError("why_not_others must contain non-empty strings")
 
     def validate_references(self) -> None:
         artifact_ids = {artifact.artifact_id for artifact in self.artifacts}
