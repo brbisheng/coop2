@@ -95,6 +95,7 @@ def test_api_facade_round_continuation_and_artifact_read(tmp_path: Path):
             "critiques": _critiques(),
             "panel_state": _panel_state(),
             "accepted_patches": [{"proposed_changes": {"mechanism": "clarified"}}],
+            "unresolved_dissent_saved": True,
             "soul_profile": {"style": {"tone": "concise"}},
         }
     )
@@ -148,6 +149,7 @@ def test_run_round_routes_soul_only_to_soul_ledger_not_governance(tmp_path: Path
             },
             "soul_profile": {"style": {"tone": "calm"}},
             "accepted_patches": [{"proposed_changes": {"mechanism": "clarified"}}],
+            "unresolved_dissent_saved": True,
         }
     )
 

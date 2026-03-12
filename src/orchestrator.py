@@ -163,6 +163,126 @@ def _extract_tags(payload: str, keys: tuple[str, ...]) -> set[str]:
     return tags
 
 
+def _normalize_list_field(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple, set)):
+        normalized: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text:
+                normalized.append(text)
+        return normalized
+    return []
+
+
+def _extract_attack_tokens(item: dict[str, Any]) -> set[str]:
+    if not isinstance(item, dict):
+        return set()
+
+    token_fields = (
+        "attack_labels",
+        "challenged_fields",
+        "reasoning_path_labels",
+        "flip_condition",
+        "evidence_refs",
+    )
+    tokens: set[str] = set()
+    for key in token_fields:
+        for value in _normalize_list_field(item.get(key)):
+            token = value.strip().lower()
+            if token:
+                tokens.add(token)
+    return tokens
+
+
+def validate_attack_response_alignment(
+    *,
+    critiques: list[dict[str, Any]],
+    repair_output: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Validate whether repair output aligns with critique attacks.
+
+    Rules:
+    1) when two independent critiques exist, repair must cover at least one key attack point;
+    2) uncovered attacks must be present in `not_addressed_attacks` and be convertible to unresolved dissent.
+    """
+
+    normalized_repair = dict(repair_output) if isinstance(repair_output, dict) else {}
+    addressed = normalized_repair.get("addressed_attacks")
+    not_addressed = normalized_repair.get("not_addressed_attacks")
+    addressed_items = [item for item in (addressed or []) if isinstance(item, dict)]
+    not_addressed_items = [item for item in (not_addressed or []) if isinstance(item, dict)]
+
+    independent_critiques = [item for item in critiques if isinstance(item, dict)][:2]
+    key_attacks: list[dict[str, Any]] = independent_critiques if len(independent_critiques) >= 2 else []
+
+    addressed_tokens: set[str] = set()
+    for item in addressed_items:
+        addressed_tokens.update(_extract_attack_tokens(item))
+
+    covered_count = 0
+    uncovered_from_critique: list[dict[str, Any]] = []
+    for critique in key_attacks:
+        attack_tokens = _extract_attack_tokens(critique)
+        if attack_tokens and attack_tokens & addressed_tokens:
+            covered_count += 1
+        else:
+            uncovered_from_critique.append(critique)
+
+    not_addressed_tokens: set[str] = set()
+    for item in not_addressed_items:
+        not_addressed_tokens.update(_extract_attack_tokens(item))
+
+    unresolved_dissents: list[dict[str, Any]] = []
+    for idx, critique in enumerate(uncovered_from_critique, start=1):
+        unresolved_dissents.append(
+            {
+                "dissent_id": f"auto-unresolved-{idx}",
+                "status": "open",
+                "conflict_type": "execution",
+                "message": "repair did not address this critique attack",
+                "attack": critique,
+            }
+        )
+
+    missing_not_addressed = any(
+        _extract_attack_tokens(critique) - not_addressed_tokens for critique in uncovered_from_critique
+    )
+
+    aligned = True
+    reasons: list[str] = []
+    if key_attacks and covered_count < 1:
+        aligned = False
+        reasons.append("repair must cover at least one key point from independent critiques")
+    if uncovered_from_critique and missing_not_addressed:
+        aligned = False
+        reasons.append("uncovered attacks must appear in not_addressed_attacks")
+
+    return {
+        "is_aligned": aligned,
+        "covered_key_attack_count": covered_count,
+        "required_key_attack_count": 1 if key_attacks else 0,
+        "uncovered_attacks": uncovered_from_critique,
+        "unresolved_dissents": unresolved_dissents,
+        "reasons": reasons,
+    }
+
+
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    stripped = str(text).strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def validate_seat_output(
     *,
     seat: str,
@@ -185,6 +305,20 @@ def validate_seat_output(
             reasons.append("缺少可检验/可反驳预测")
 
     elif seat_key == "critic_a":
+        parsed = _parse_json_object(output_text)
+        required_keys = (
+            "attack_labels",
+            "challenged_fields",
+            "reasoning_path_labels",
+            "flip_condition",
+            "evidence_refs",
+        )
+        if not parsed:
+            reasons.append("critic 输出必须是包含统一字段的 JSON 对象")
+        else:
+            for key in required_keys:
+                if key not in parsed:
+                    reasons.append(f"缺少字段: {key}")
         fragile_markers = ("脆弱", "fragile", "推翻", "invalidate", "break")
         if not any(marker in text for marker in fragile_markers):
             reasons.append("未识别可推翻结论的脆弱点")
@@ -193,6 +327,20 @@ def validate_seat_output(
             reasons.append("与已有攻击点高度重复")
 
     elif seat_key == "critic_b":
+        parsed = _parse_json_object(output_text)
+        required_keys = (
+            "attack_labels",
+            "challenged_fields",
+            "reasoning_path_labels",
+            "flip_condition",
+            "evidence_refs",
+        )
+        if not parsed:
+            reasons.append("critic 输出必须是包含统一字段的 JSON 对象")
+        else:
+            for key in required_keys:
+                if key not in parsed:
+                    reasons.append(f"缺少字段: {key}")
         alternative_markers = ("不同路径", "independent", "alternative", "另一条")
         if not any(marker in text for marker in alternative_markers):
             reasons.append("未明确与critic_a不同路径")
@@ -201,6 +349,19 @@ def validate_seat_output(
             reasons.append("与critic_a路径重复")
 
     elif seat_key == "repairer":
+        parsed = _parse_json_object(output_text)
+        required_keys = (
+            "addressed_attacks",
+            "not_addressed_attacks",
+            "patch",
+            "new_testable_implication",
+        )
+        if not parsed:
+            reasons.append("repair 输出必须是包含统一字段的 JSON 对象")
+        else:
+            for key in required_keys:
+                if key not in parsed:
+                    reasons.append(f"缺少字段: {key}")
         minimal_markers = ("最小", "minimal", "小改", "least change")
         coverage_markers = ("覆盖", "cover", "漏洞", "vulnerability", "risk")
         if not any(marker in text for marker in minimal_markers):

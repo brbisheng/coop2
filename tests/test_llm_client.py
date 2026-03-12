@@ -11,6 +11,7 @@ from src.orchestrator import (
     build_seat_context,
     get_prompt_template_for_seat,
     get_sampling_config_for_seat,
+    validate_seat_output,
 )
 
 
@@ -42,7 +43,7 @@ def test_openrouter_client_injects_per_seat_sampling_and_persists_trace(monkeypa
         captured["headers"] = headers
         captured["json"] = body
         captured["timeout"] = timeout_s
-        return {"id": "resp-1", "choices": [{"message": {"content": "alternative path with independent evidence"}}]}
+        return {"id": "resp-1", "choices": [{"message": {"content": "{\"attack_labels\": [\"measurement-risk\"], \"challenged_fields\": [\"outcome\"], \"reasoning_path_labels\": [\"alternative-path\"], \"flip_condition\": \"independent falsifier\", \"evidence_refs\": [\"paper-x\"]}"}}]}
 
     monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
 
@@ -137,7 +138,7 @@ def test_build_seat_context_windows():
 
 def test_openrouter_client_persists_seat_context_trace(monkeypatch, tmp_path: Path):
     def fake_post_json(self, *, url, headers, body, timeout_s):
-        return {"id": "resp-2", "choices": [{"message": {"content": "minimal change covers vulnerabilities"}}]}
+        return {"id": "resp-2", "choices": [{"message": {"content": "{\"addressed_attacks\": [{\"attack_labels\": [\"id-risk\"], \"challenged_fields\": [\"assumption_set\"], \"reasoning_path_labels\": [\"causal-chain\"], \"flip_condition\": \"if IV fails\", \"evidence_refs\": [\"doi:1\"]}], \"not_addressed_attacks\": [], \"patch\": {\"mechanism\": \"tighten\"}, \"new_testable_implication\": \"predicts stronger effect under x\"}"}}]}
 
     monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
 
@@ -160,3 +161,29 @@ def test_openrouter_client_persists_seat_context_trace(monkeypatch, tmp_path: Pa
     payload = json.loads(context_file.read_text(encoding="utf-8"))
     assert payload["seat"] == "repairer"
     assert sorted(payload["seat_context"].keys()) == ["critique_a", "critique_b", "proposal", "transfer"]
+
+
+def test_validate_seat_output_enforces_unified_critic_and_repair_fields():
+    critic_ok, critic_reasons = validate_seat_output(
+        seat="critic_a",
+        output_text='{"attack_labels": ["a"], "challenged_fields": ["f"], "reasoning_path_labels": ["r"], "flip_condition": "c", "evidence_refs": ["e"], "summary": "fragile"}',
+        seat_context={},
+    )
+    assert critic_ok is True
+    assert critic_reasons == []
+
+    repair_ok, repair_reasons = validate_seat_output(
+        seat="repairer",
+        output_text='{"addressed_attacks": [], "not_addressed_attacks": [], "patch": {}, "new_testable_implication": "x", "summary": "minimal cover risk"}',
+        seat_context={},
+    )
+    assert repair_ok is True
+    assert repair_reasons == []
+
+    critic_bad, critic_bad_reasons = validate_seat_output(
+        seat="critic_b",
+        output_text='{"attack_labels": ["a"]}',
+        seat_context={},
+    )
+    assert critic_bad is False
+    assert any("缺少字段" in reason for reason in critic_bad_reasons)
