@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 from urllib import request
 
-from .orchestrator import build_seat_context, get_sampling_config_for_seat
+from .orchestrator import (
+    build_retry_correction_message,
+    build_seat_context,
+    build_seat_instruction_message,
+    get_sampling_config_for_seat,
+    validate_seat_output,
+)
 
 
 @dataclass(slots=True)
@@ -32,9 +38,12 @@ class OpenRouterClient:
         round_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         sampling = get_sampling_config_for_seat(seat)
+        seat_context = build_seat_context(round_state or {}, seat) if isinstance(round_state, dict) else {}
+
+        final_messages = [build_seat_instruction_message(seat, seat_context), *messages]
         request_body: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "messages": final_messages,
             **sampling,
         }
         if isinstance(extra_body, dict):
@@ -50,7 +59,26 @@ class OpenRouterClient:
             timeout_s=timeout_s,
         )
 
-        seat_context = build_seat_context(round_state or {}, seat) if isinstance(round_state, dict) else {}
+        validation = self._validate_payload_output(seat=seat, payload=payload, seat_context=seat_context)
+        retry_trace: dict[str, Any] = {
+            "attempted": False,
+            "failure_reasons": validation["reasons"],
+            "retry_reason": None,
+        }
+        if not validation["is_valid"]:
+            retry_trace["attempted"] = True
+            retry_trace["retry_reason"] = f"本地校验失败: {'; '.join(validation['reasons'])}"
+            retry_body = dict(request_body)
+            retry_body["messages"] = [*final_messages, build_retry_correction_message(validation["reasons"])]
+            payload = self._post_json(
+                url=self.base_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                body=retry_body,
+                timeout_s=timeout_s,
+            )
 
         self._write_trace(
             trace_dir=Path(trace_dir),
@@ -59,6 +87,8 @@ class OpenRouterClient:
             sampling=sampling,
             request_body=request_body,
             response_body=payload,
+            validation=validation,
+            retry_trace=retry_trace,
         )
         if seat_context:
             self._write_context(
@@ -96,6 +126,8 @@ class OpenRouterClient:
         sampling: dict[str, Any],
         request_body: dict[str, Any],
         response_body: dict[str, Any],
+        validation: dict[str, Any],
+        retry_trace: dict[str, Any],
     ) -> Path:
         trace_dir.mkdir(parents=True, exist_ok=True)
         seat_key = str(seat).strip().lower()
@@ -108,6 +140,8 @@ class OpenRouterClient:
             "sampling": sampling,
             "request": request_body,
             "response": response_body,
+            "local_validation": validation,
+            "retry": retry_trace,
         }
         trace_path.write_text(json.dumps(trace_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return trace_path
@@ -131,3 +165,22 @@ class OpenRouterClient:
         }
         context_path.write_text(json.dumps(context_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return context_path
+
+    def _validate_payload_output(
+        self,
+        *,
+        seat: str,
+        payload: dict[str, Any],
+        seat_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        choices = payload.get("choices")
+        first_choice = choices[0] if isinstance(choices, list) and choices else {}
+        message = first_choice.get("message") if isinstance(first_choice, dict) else {}
+        content = message.get("content", "") if isinstance(message, dict) else ""
+
+        is_valid, reasons = validate_seat_output(seat=seat, output_text=content, seat_context=seat_context)
+        return {
+            "is_valid": is_valid,
+            "reasons": reasons,
+            "validated_content_length": len(str(content)),
+        }
