@@ -414,6 +414,7 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
     evidence_needs: list[str] = []
     evidence_gaps: list[str] = []
     evidence_refs_by_module: dict[str, list[str]] = {}
+    discipline_payload_by_module: dict[str, dict[str, Any]] = {}
 
     for item in audit_results:
         if not isinstance(item, dict):
@@ -434,6 +435,14 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         evidence_gap = str(audit.get("evidence_gap", "")).strip()
         if evidence_gap:
             evidence_gaps.append(evidence_gap)
+
+        module_discipline_payload = audit.get("discipline_payload")
+        if isinstance(module_discipline_payload, dict):
+            module_entry = module_discipline_payload.get(module_name)
+            if isinstance(module_entry, dict):
+                discipline_payload_by_module[module_name] = module_entry
+            else:
+                discipline_payload_by_module[module_name] = module_discipline_payload
 
     unique_claims = sorted(set(revisions + risks + questions))
     covered_claims = set(revisions)
@@ -460,6 +469,7 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         "evidence_needs": evidence_needs,
         "evidence_gaps": evidence_gaps,
         "evidence_refs_by_module": evidence_refs_by_module,
+        "discipline_payload_by_module": discipline_payload_by_module,
         "evidence_coverage_rate": round(evidence_coverage_rate, 4),
         "uncovered_key_claims": uncovered_key_claims,
         "rationale": rationale,

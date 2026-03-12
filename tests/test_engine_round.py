@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.agents import rank_and_filter_seat_candidates
-from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch, score_seat_candidates
+from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch, score_seat_candidates, summarize_audit_batch
 from src.storage import analyze_dual_ledger_soul_influence
 
 
@@ -412,6 +412,117 @@ def test_lineage_chain_can_be_reconstructed_from_parent_ids(tmp_path: Path):
     assert second["commit"]["version"] == "v2"
 
 
+
+
+def test_run_perspective_audit_batch_supports_new_placeholder_modules():
+    from src.perspectives import PhysicsModule, StatisticsModule
+
+    audits = run_perspective_audit_batch(
+        modules=[StatisticsModule(), PhysicsModule()],
+        artifact={"artifact_id": "a1"},
+        local_context={"arena": "mechanism"},
+        unresolved_conflicts=[],
+    )
+
+    assert {item["module"] for item in audits} == {"statistics", "physics"}
+    for item in audits:
+        assert "discipline_payload" in item["audit"]
+        assert item["module"] in item["audit"]["discipline_payload"]
+
+
+def test_summarize_audit_batch_preserves_discipline_payload():
+    audit_results = [
+        {
+            "module": "statistics",
+            "module_version": "0.1",
+            "audit": {
+                "observations": [],
+                "criticisms": [],
+                "revisions": [],
+                "risks": [],
+                "questions": [],
+                "evidence_needs": [],
+                "evidence_refs": [],
+                "evidence_type": "none",
+                "evidence_strength": "none",
+                "evidence_gap": "stats placeholder",
+                "confidence": 0.0,
+                "discipline_payload": {"statistics": {"status": "placeholder"}},
+            },
+        },
+        {
+            "module": "economics",
+            "module_version": "0.1",
+            "audit": {
+                "observations": ["o"],
+                "criticisms": ["c"],
+                "revisions": ["r"],
+                "risks": ["k"],
+                "questions": ["q"],
+                "evidence_needs": ["n"],
+                "evidence_refs": ["doi:10.1000/example"],
+                "evidence_type": "empirical",
+                "evidence_strength": "weak",
+                "evidence_gap": "",
+                "confidence": 0.5,
+            },
+        },
+    ]
+
+    summary = summarize_audit_batch(audit_results)
+
+    assert summary["discipline_payload_by_module"]["statistics"] == {"status": "placeholder"}
+    assert "economics" not in summary["discipline_payload_by_module"]
+
+
+def test_run_micro_deliberation_keeps_discipline_payload_traceable(tmp_path: Path):
+    session = tmp_path / "session_discipline_payload"
+    critiques = [
+        {"attack_labels": ["a"], "challenged_fields": ["f"], "reasoning_path_labels": ["r1"]},
+        {"attack_labels": ["b"], "challenged_fields": ["g"], "reasoning_path_labels": ["r2"]},
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"statistics": 1.0}},
+            {"agent_id": "a2", "human_base_weight": 0.5, "module_weights": {"economics": 1.0}},
+        ]
+    }
+    audits = [
+        {
+            "module": "statistics",
+            "module_version": "0.1",
+            "audit": {
+                "observations": [],
+                "criticisms": [],
+                "revisions": [],
+                "risks": [],
+                "questions": [],
+                "evidence_needs": [],
+                "evidence_refs": [],
+                "evidence_type": "none",
+                "evidence_strength": "none",
+                "evidence_gap": "stats placeholder",
+                "confidence": 0.0,
+                "discipline_payload": {"statistics": {"trace_id": "sp-1"}},
+            },
+        }
+    ]
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_discipline",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "discipline-payload"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+        perspective_audits=audits,
+    )
+
+    summary = result["event"]["audit_summary"]
+    assert summary["discipline_payload_by_module"]["statistics"] == {"trace_id": "sp-1"}
 
 def test_run_perspective_audit_batch_with_multiple_modules_is_structured(tmp_path: Path):
     from src.perspectives import EconomicsModule, PsychologyModule
