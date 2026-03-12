@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .artifacts import normalize_conflict_type
+from .artifacts import ManuscriptCard, normalize_conflict_type
 from .governor import validate_precommit_action
 from .arenas import load_arenas
 from .memory import ContinuationPack, build_minimal_context
@@ -803,6 +803,106 @@ def build_continuation_pack(
         unresolved_conflicts=unresolved_conflicts,
     )
 
+
+
+
+def build_manuscript_draft_cards_from_records(
+    *,
+    snapshot: dict[str, Any],
+    commits: list[dict[str, Any]],
+    dissents: list[dict[str, Any]],
+    artifact_id: str | None = None,
+) -> list[ManuscriptCard]:
+    """Build manuscript draft cards from snapshot/commit/dissent records."""
+
+    snapshot_id = str(snapshot.get("snapshot_id", "")).strip() or None
+    latest_commit_ids = snapshot.get("latest_commits", [])
+    latest_commit_id = None
+    if isinstance(latest_commit_ids, list) and latest_commit_ids:
+        latest_commit_id = str(latest_commit_ids[-1]).strip() or None
+
+    target_commits = [item for item in commits if isinstance(item, dict)]
+    if artifact_id:
+        target_commits = [
+            item for item in target_commits if str(item.get("artifact_id", "")).strip() == artifact_id
+        ]
+
+    if not target_commits:
+        return []
+
+    open_dissents = [
+        item
+        for item in dissents
+        if isinstance(item, dict) and str(item.get("status", "open")).strip().lower() == "open"
+    ]
+
+    cards: list[ManuscriptCard] = []
+    for index, commit in enumerate(target_commits, start=1):
+        commit_id = str(commit.get("commit_id", "")).strip()
+        commit_artifact_id = str(commit.get("artifact_id", artifact_id or "artifact_main")).strip()
+        open_issues = commit.get("open_issues", [])
+        commit_conflicts = [item for item in open_issues if isinstance(item, str) and item.strip()]
+        dissent_conflicts = [
+            str(item.get("summary", item.get("message", ""))).strip()
+            for item in open_dissents
+            if str(item.get("artifact_id", commit_artifact_id)).strip() == commit_artifact_id
+        ]
+        pending_conflicts = [item for item in [*commit_conflicts, *dissent_conflicts] if item]
+
+        evidence_refs = [f"commit:{commit_id}"] if commit_id else []
+        evidence_refs.extend(
+            f"dissent:{str(item.get('dissent_id')).strip()}"
+            for item in open_dissents
+            if str(item.get("artifact_id", commit_artifact_id)).strip() == commit_artifact_id
+            and str(item.get("dissent_id", "")).strip()
+        )
+
+        alternatives = [
+            item
+            for item in commit.get("why_not_others", [])
+            if isinstance(item, str) and item.strip()
+        ]
+
+        source_commit_id = commit_id or latest_commit_id
+        card = ManuscriptCard(
+            manuscript_id=f"ms_{commit_artifact_id}_{index}",
+            artifact_id=commit_artifact_id,
+            chapter_slot=f"chapter_{index}",
+            evidence_refs=evidence_refs,
+            pending_conflicts=pending_conflicts,
+            alternative_explanations=alternatives,
+            source_snapshot_id=snapshot_id,
+            source_commit_id=source_commit_id,
+        )
+        cards.append(card)
+
+    return cards
+
+
+def export_manuscript_skeleton(
+    session_dir: str | Path,
+    *,
+    artifact_id: str | None = None,
+) -> dict[str, Any]:
+    """Export manuscript writing skeleton from persisted records."""
+
+    root = Path(session_dir)
+    snapshot = ensure_current_schema(_read_json(root / "snapshot.json"))
+    commits = [ensure_current_schema(entry) for entry in _read_jsonl(root / "commits.jsonl")]
+    dissents = [ensure_current_schema(entry) for entry in _read_dissent_cards(root / "dissent")]
+
+    cards = build_manuscript_draft_cards_from_records(
+        snapshot=snapshot,
+        commits=commits,
+        dissents=dissents,
+        artifact_id=artifact_id,
+    )
+
+    return {
+        "snapshot_id": snapshot.get("snapshot_id"),
+        "artifact_id": artifact_id,
+        "manuscript_cards": [card.to_dict() for card in cards],
+    }
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(

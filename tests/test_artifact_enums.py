@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.artifacts import ArtifactCard, CommitRecord, DebateTurn, normalize_conflict_type
+from src.artifacts import ArtifactCard, CommitRecord, DebateTurn, ManuscriptCard, normalize_conflict_type
 from src.protocol import ModelValidationError
 
 
@@ -136,3 +136,30 @@ def test_conflict_type_rejects_invalid_value():
 
 def test_conflict_type_accepts_allowed_values():
     assert normalize_conflict_type("Mechanism") == "mechanism"
+
+
+def test_manuscript_card_serialization_and_validation():
+    card = ManuscriptCard(
+        manuscript_id="ms-1",
+        artifact_id="artifact_main",
+        chapter_slot="introduction",
+        evidence_refs=["commit:c-1", "dissent:d-1"],
+        pending_conflicts=["sample size remains small"],
+        alternative_explanations=["effect is driven by selection bias"],
+        source_snapshot_id="snap-1",
+        source_commit_id="c-1",
+    )
+
+    payload = card.to_dict()
+    assert payload["chapter_slot"] == "introduction"
+    assert payload["evidence_refs"] == ["commit:c-1", "dissent:d-1"]
+
+
+def test_manuscript_card_rejects_empty_evidence_ref():
+    with pytest.raises(ModelValidationError, match="evidence_refs must contain non-empty strings"):
+        ManuscriptCard(
+            manuscript_id="ms-2",
+            artifact_id="artifact_main",
+            chapter_slot="methods",
+            evidence_refs=[""],
+        )

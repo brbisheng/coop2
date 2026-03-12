@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .engine import build_continuation_pack, load_artifact_version, run_micro_deliberation
+from .engine import (
+    build_continuation_pack,
+    export_manuscript_skeleton,
+    load_artifact_version,
+    run_micro_deliberation,
+)
 from .memory import ContinuationPack
 from .protocol import DebateArena, ModelValidationError, parse_enum
 from .soul import SoulValidationError, validate_soul_profile
@@ -155,6 +160,24 @@ class ArtifactReadRequest:
         )
 
 
+
+
+@dataclass(slots=True)
+class ManuscriptExportRequest:
+    session_dir: str
+    artifact_id: str | None
+
+    @classmethod
+    def from_api_json(cls, payload: dict[str, Any] | None) -> "ManuscriptExportRequest":
+        raw = _require_mapping(payload, endpoint="export_manuscript")
+        if "session_dir" not in raw:
+            raise ServiceApiValidationError("export_manuscript missing required fields: ['session_dir']")
+        artifact_id = raw.get("artifact_id")
+        return cls(
+            session_dir=str(raw["session_dir"]),
+            artifact_id=str(artifact_id) if artifact_id is not None else None,
+        )
+
 @dataclass(slots=True)
 class ContinuationPackResponse:
     goal: str
@@ -230,4 +253,14 @@ def read_artifact(payload: dict[str, Any] | None) -> dict[str, Any]:
         request.session_dir,
         artifact_id=request.artifact_id,
         version=request.version,
+    )
+
+
+def export_manuscript(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """API facade for manuscript skeleton export."""
+
+    request = ManuscriptExportRequest.from_api_json(payload)
+    return export_manuscript_skeleton(
+        request.session_dir,
+        artifact_id=request.artifact_id,
     )
