@@ -12,6 +12,9 @@ REQUIRED_AUDIT_FIELDS = (
     "risks",
     "questions",
     "evidence_needs",
+    "evidence_refs",
+    "evidence_type",
+    "evidence_gap",
     "confidence",
 )
 
@@ -51,6 +54,43 @@ def validate_perspective_output(payload: dict[str, Any]) -> None:
     if missing:
         raise PerspectiveValidationError(f"Missing required audit fields: {missing}")
 
+    list_fields = (
+        "observations",
+        "criticisms",
+        "revisions",
+        "risks",
+        "questions",
+        "evidence_needs",
+        "evidence_refs",
+    )
+    for field in list_fields:
+        if not isinstance(payload[field], list):
+            raise PerspectiveValidationError(f"{field} must be a list")
+        if any(not isinstance(item, str) or not item.strip() for item in payload[field]):
+            raise PerspectiveValidationError(f"{field} entries must be non-empty strings")
+
+    if not isinstance(payload["evidence_type"], str) or not payload["evidence_type"].strip():
+        raise PerspectiveValidationError("evidence_type must be a non-empty string")
+
+    if not isinstance(payload["evidence_gap"], str):
+        raise PerspectiveValidationError("evidence_gap must be a string")
+
+    evidence_refs = payload["evidence_refs"]
+    evidence_type = payload["evidence_type"].strip().lower()
+    evidence_gap = payload["evidence_gap"].strip()
+
+    if evidence_type != "none" and not evidence_refs and not evidence_gap:
+        raise PerspectiveValidationError(
+            "minimal evidence completeness failed: provide evidence_refs or explain evidence_gap"
+        )
+    if evidence_type == "none" and not evidence_gap:
+        raise PerspectiveValidationError(
+            "minimal evidence completeness failed: evidence_gap is required when evidence_type is none"
+        )
+
+    if any("fake" in ref.lower() for ref in evidence_refs):
+        raise PerspectiveValidationError("evidence_refs contains invalid fake evidence")
+
     if not isinstance(payload["confidence"], (int, float)):
         raise PerspectiveValidationError("confidence must be numeric")
 
@@ -74,6 +114,9 @@ class EconomicsModule(BasePerspectiveModule):
             "risks": ["strategic response bias"],
             "questions": ["what is the credible observable proxy?"],
             "evidence_needs": ["collect baseline behavioral indicators"],
+            "evidence_refs": ["doi:10.1000/example-econ-01"],
+            "evidence_type": "empirical",
+            "evidence_gap": "",
             "confidence": 0.55,
         }
         return self._validated(payload)
@@ -98,6 +141,9 @@ class PhilosophyModule(BasePerspectiveModule):
             "risks": ["hidden normative bias in objective selection"],
             "questions": ["which fairness principle governs edge cases?"],
             "evidence_needs": ["document stakeholder value constraints"],
+            "evidence_refs": ["doi:10.1000/example-phil-01"],
+            "evidence_type": "theoretical",
+            "evidence_gap": "",
             "confidence": 0.58,
         }
         return self._validated(payload)
@@ -122,6 +168,9 @@ class PsychologyModule(BasePerspectiveModule):
             "risks": ["survey framing may trigger demand characteristics"],
             "questions": ["what mechanisms reduce response fatigue bias?"],
             "evidence_needs": ["collect manipulation-check outcomes"],
+            "evidence_refs": ["doi:10.1000/example-psy-01"],
+            "evidence_type": "empirical",
+            "evidence_gap": "",
             "confidence": 0.52,
         }
         return self._validated(payload)
