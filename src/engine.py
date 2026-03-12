@@ -20,6 +20,7 @@ from .protocol import (
     parse_enum,
     persona_diversity_score,
 )
+from .orchestrator import validate_attack_response_alignment
 from .storage import ensure_current_schema
 
 
@@ -48,7 +49,35 @@ def _build_round_input(
     normalized.setdefault("proposal", {"present": True})
     normalized.setdefault("critique_a", critiques[0] if len(critiques) >= 1 else None)
     normalized.setdefault("critique_b", critiques[1] if len(critiques) >= 2 else None)
-    normalized.setdefault("repair", {"present": bool(accepted_patches)})
+
+    default_patch: dict[str, Any] = {}
+    for candidate in accepted_patches or []:
+        if not isinstance(candidate, dict):
+            continue
+        proposed = candidate.get("proposed_changes")
+        if isinstance(proposed, dict):
+            default_patch = proposed
+            break
+
+    if len(critiques) >= 2:
+        default_addressed = [critiques[0]] if isinstance(critiques[0], dict) else []
+        default_not_addressed = [critiques[1]] if isinstance(critiques[1], dict) else []
+    elif len(critiques) == 1 and isinstance(critiques[0], dict):
+        default_addressed = [critiques[0]]
+        default_not_addressed = []
+    else:
+        default_addressed = []
+        default_not_addressed = []
+
+    normalized.setdefault(
+        "repair",
+        {
+            "addressed_attacks": default_addressed,
+            "not_addressed_attacks": default_not_addressed,
+            "patch": default_patch,
+            "new_testable_implication": "derived from accepted patch and critiques",
+        },
+    )
     normalized.setdefault("decision", {"action": proposed_action})
     return normalized
 
@@ -499,6 +528,12 @@ def run_micro_deliberation(
     action = proposed_action.strip().lower()
     arena_name = parse_enum(arena, DebateArena, "arena").value
     round_input_data = _build_round_input(critiques, round_input, accepted_patches, proposed_action=action)
+
+    repair_output = round_input_data.get("repair") if isinstance(round_input_data.get("repair"), dict) else {}
+    alignment = validate_attack_response_alignment(critiques=critiques, repair_output=repair_output)
+    if alignment["unresolved_dissents"]:
+        unresolved_dissents = [*(unresolved_dissents or []), *alignment["unresolved_dissents"]]
+
     missing_steps = _missing_round_steps(round_input_data)
     missing_obligations, obligation_report = _required_obligation_report(arena_name, round_input_data)
 
@@ -516,6 +551,10 @@ def run_micro_deliberation(
             + ", ".join(missing_obligations)
             + "; only park/continue allowed"
         )
+    elif not alignment["is_aligned"]:
+        action = "continue_discussion"
+        commit_allowed = True
+        reason = "attack-response alignment failed; downgrade action to continue_discussion"
     else:
         commit_allowed, reason = validate_precommit_action(
             proposed_action,
@@ -622,6 +661,7 @@ def run_micro_deliberation(
         "perspective_audits": perspective_audits,
         "patch_rationale": audit_summary["rationale"],
         "quality_metrics": quality_metrics,
+        "attack_response_alignment": alignment,
     }
 
     event = {
@@ -645,6 +685,7 @@ def run_micro_deliberation(
         "patch_rationale": audit_summary["rationale"],
         "audit_summary": audit_summary,
         "quality_metrics": quality_metrics,
+        "attack_response_alignment": alignment,
     }
 
     cognitive_output = {
@@ -741,6 +782,7 @@ def run_micro_deliberation(
                 "missing_obligations": missing_obligations,
                 "obligation_report": obligation_report,
                 "quality_metrics": quality_metrics,
+                "attack_response_alignment": alignment,
             },
             "timestamp": now,
         },

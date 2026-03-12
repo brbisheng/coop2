@@ -83,11 +83,13 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert commits[0]["reasons"]
     assert commits[0]["why_not_others"]
     assert commits[0]["dissent_patch_ids"]
-    assert commits[0]["conflict_types"] == ["mechanism"]
+    assert "mechanism" in commits[0]["conflict_types"]
+    assert "execution" in commits[0]["conflict_types"]
     assert events[-1]["reasons"]
     assert events[-1]["why_not_others"]
     assert events[-1]["dissent_patch_ids"]
-    assert events[-1]["conflict_types"] == ["mechanism"]
+    assert "mechanism" in events[-1]["conflict_types"]
+    assert "execution" in events[-1]["conflict_types"]
     assert "quality_metrics" in result["commit"]
     assert set(result["commit"]["quality_metrics"]) >= {
         "obligation_completeness",
@@ -185,8 +187,9 @@ def test_run_micro_round_defaults_missing_conflict_type_to_execution(tmp_path: P
         unresolved_dissent_saved=True,
     )
 
-    assert result["commit"]["conflict_types"] == ["execution"]
-    assert result["event"]["conflict_types"] == ["execution"]
+    assert all(item == "execution" for item in result["commit"]["conflict_types"])
+    assert all(item == "execution" for item in result["event"]["conflict_types"])
+    assert len(result["commit"]["conflict_types"]) >= 1
     dissent_saved = json.loads((session / "dissent" / "d-2.json").read_text(encoding="utf-8"))
     assert dissent_saved["conflict_type"] == "execution"
 
@@ -857,13 +860,18 @@ def test_run_micro_round_supports_new_arenas_without_degraded_path(tmp_path: Pat
                 "proposal": {"present": True, "artifact_type": "research_idea"},
                 "critique_a": critiques[0],
                 "critique_b": critiques[1],
-                "repair": {"present": True},
+                "repair": {
+                    "addressed_attacks": [critiques[0]],
+                    "not_addressed_attacks": [critiques[1]],
+                    "patch": {"note": arena_name},
+                    "new_testable_implication": "arena-specific implication",
+                },
                 "decision": {"action": "commit"},
             },
             panel_state=panel_state,
             accepted_patches=[{"proposed_changes": {"note": arena_name}}],
             unresolved_dissents=[],
-            unresolved_dissent_saved=False,
+            unresolved_dissent_saved=True,
         )
 
         assert result["commit"]["allowed"] is True
@@ -917,3 +925,59 @@ def test_dual_ledger_analysis_compares_soul_profiles_for_same_cognitive_output(t
         json.dumps({"style": {"tone": "concise"}}, ensure_ascii=False, sort_keys=True),
         json.dumps({"temperament": {"pace": "slow"}}, ensure_ascii=False, sort_keys=True),
     }
+
+
+def test_alignment_failure_downgrades_commit_to_continue_discussion(tmp_path: Path):
+    session = tmp_path / "session_align_fail"
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+            "flip_condition": "if IV invalid",
+            "evidence_refs": ["paper-a"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+            "flip_condition": "if construct drift",
+            "evidence_refs": ["paper-b"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v10",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        round_input={
+            "proposal": {"present": True},
+            "critique_a": critiques[0],
+            "critique_b": critiques[1],
+            "repair": {
+                "addressed_attacks": [],
+                "not_addressed_attacks": [],
+                "patch": {"mechanism": "tiny"},
+                "new_testable_implication": "none",
+            },
+            "decision": {"action": "commit"},
+        },
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "tiny"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=True,
+    )
+
+    assert result["commit"]["requested_action"] == "continue_discussion"
+    assert result["commit"]["decision"] == "park"
+    assert result["event"]["attack_response_alignment"]["is_aligned"] is False
+    assert result["event"]["open_issues"]
