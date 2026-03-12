@@ -60,6 +60,56 @@ def _anti_repetition_check(panel_state: dict[str, Any]) -> tuple[bool, str | Non
     return False, "anti-repetition triggered: repeated critical-seat owner exceeds threshold"
 
 
+def _seat_coverage_quality_check(panel_state: dict[str, Any]) -> tuple[bool, str | None]:
+    """Check critical seat coverage quality to avoid long-term monopoly by one agent."""
+
+    cfg = panel_state.get("seat_coverage_quality", {})
+    if not isinstance(cfg, dict) or not bool(cfg.get("enabled", False)):
+        return True, None
+
+    action = str(cfg.get("on_violation", "reject")).strip().lower()
+    critical_seats = {
+        str(item).strip().lower()
+        for item in cfg.get("critical_seats", ["proposer", "critic"])
+        if str(item).strip()
+    }
+    window = int(cfg.get("window_size", 6))
+    max_share = float(cfg.get("max_single_agent_share", 0.75))
+
+    seat_history = panel_state.get("seat_history", [])
+    if not isinstance(seat_history, list) or not critical_seats or window <= 0:
+        return True, None
+
+    recent_rows = [row for row in seat_history if isinstance(row, dict)][-window:]
+    owner_counts: dict[str, int] = {}
+    covered = 0
+    for row in recent_rows:
+        seat = str(row.get("seat", "")).strip().lower()
+        if seat not in critical_seats:
+            continue
+        agent_id = str(row.get("agent_id", "")).strip()
+        if not agent_id:
+            continue
+        covered += 1
+        owner_counts[agent_id] = owner_counts.get(agent_id, 0) + 1
+
+    if covered == 0 or not owner_counts:
+        return True, None
+
+    top_agent, top_count = max(owner_counts.items(), key=lambda item: item[1])
+    share = top_count / covered
+    if share <= max_share:
+        return True, None
+
+    msg = (
+        "seat coverage quality check failed: "
+        f"critical seats overly concentrated on {top_agent} ({share:.2f}>{max_share:.2f})"
+    )
+    if action == "downweight":
+        return True, f"{msg}; recommend downweight"
+    return False, msg
+
+
 def validate_precommit_action(
     proposed_action: str,
     critiques: list[dict[str, Any]],
@@ -122,11 +172,13 @@ def validate_precommit_action(
     )
 
     anti_repeat_ok, anti_repeat_reason = _anti_repetition_check(panel_state)
-    gates_passed = gates_passed and anti_repeat_ok
+    coverage_ok, coverage_reason = _seat_coverage_quality_check(panel_state)
+    gates_passed = gates_passed and anti_repeat_ok and coverage_ok
 
     if gates_passed:
-        if anti_repeat_reason:
-            return True, f"precommit checks passed; {anti_repeat_reason}"
+        notices = [item for item in [anti_repeat_reason, coverage_reason] if item]
+        if notices:
+            return True, f"precommit checks passed; {'; '.join(notices)}"
         return True, "precommit checks passed"
 
     if action in allowed_on_failure:
@@ -147,6 +199,8 @@ def validate_precommit_action(
         reasons.append("soul profile cannot override commit rules/min critique constraints")
     if anti_repeat_reason and not anti_repeat_ok:
         reasons.append(anti_repeat_reason)
+    if coverage_reason and not coverage_ok:
+        reasons.append(coverage_reason)
 
     reason_text = "; ".join(reasons) if reasons else "precommit checks failed"
     return (False, f"{reason_text}; only park/continue_discussion allowed")

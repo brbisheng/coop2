@@ -344,3 +344,107 @@ def test_validate_precommit_action_allows_commit_with_downweight_warning_on_anti
 
     assert ok is True
     assert "downweight" in reason
+
+
+def test_validate_precommit_action_rejects_commit_on_seat_coverage_quality_violation():
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+            "evidence_refs": ["paper-1"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+            "evidence_refs": ["dataset-2"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ],
+        "seat_coverage_quality": {
+            "enabled": True,
+            "critical_seats": ["proposer", "critic"],
+            "window_size": 6,
+            "max_single_agent_share": 0.66,
+            "on_violation": "reject",
+        },
+        "seat_history": [
+            {"agent_id": "a1", "seat": "proposer"},
+            {"agent_id": "a1", "seat": "critic"},
+            {"agent_id": "a1", "seat": "proposer"},
+            {"agent_id": "a1", "seat": "critic"},
+            {"agent_id": "a2", "seat": "repairer"},
+            {"agent_id": "a3", "seat": "repairer"},
+        ],
+    }
+    patches = [{"proposed_changes": {"mechanism": "updated", "outcome_vars": ["x"]}}]
+
+    ok, reason = validate_precommit_action(
+        "commit",
+        critiques,
+        panel_state,
+        accepted_patches=patches,
+        unresolved_dissents=[],
+        unresolved_dissent_saved=True,
+    )
+
+    assert ok is False
+    assert "seat coverage quality check failed" in reason
+
+
+def test_validate_precommit_action_allows_commit_with_coverage_downweight_warning():
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+            "evidence_refs": ["paper-1"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+            "evidence_refs": ["dataset-2"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ],
+        "seat_coverage_quality": {
+            "enabled": True,
+            "critical_seats": ["proposer", "critic"],
+            "window_size": 6,
+            "max_single_agent_share": 0.66,
+            "on_violation": "downweight",
+        },
+        "seat_history": [
+            {"agent_id": "a1", "seat": "proposer"},
+            {"agent_id": "a1", "seat": "critic"},
+            {"agent_id": "a1", "seat": "proposer"},
+            {"agent_id": "a1", "seat": "critic"},
+            {"agent_id": "a2", "seat": "repairer"},
+            {"agent_id": "a3", "seat": "repairer"},
+        ],
+    }
+    patches = [{"proposed_changes": {"mechanism": "updated", "outcome_vars": ["x"]}}]
+
+    ok, reason = validate_precommit_action(
+        "commit",
+        critiques,
+        panel_state,
+        accepted_patches=patches,
+        unresolved_dissents=[],
+        unresolved_dissent_saved=True,
+    )
+
+    assert ok is True
+    assert "recommend downweight" in reason
