@@ -74,6 +74,36 @@ def seat_policy_allows_seat(
     return True
 
 
+def rank_and_filter_seat_candidates(
+    *,
+    seat_scores: dict[str, float],
+    seat_policy: dict[str, Any],
+    current_round: int,
+    seat_last_assigned_round: dict[str, int | None] | None = None,
+) -> list[str]:
+    """Two-stage seat allocation: policy hard-filter then score-based ranking."""
+
+    last_round_map = seat_last_assigned_round or {}
+    eligible: list[tuple[str, float]] = []
+    for seat, score in seat_scores.items():
+        seat_name = str(seat).strip().lower()
+        if not seat_name:
+            continue
+        if not seat_policy_allows_seat(
+            seat_policy,
+            seat=seat_name,
+            current_round=current_round,
+            last_assigned_round=last_round_map.get(seat_name),
+        ):
+            continue
+        eligible.append((seat_name, float(score)))
+
+    preferred = set(interpret_seat_policy(seat_policy).get("preferred_seats", []))
+
+    eligible.sort(key=lambda item: ((item[0] not in preferred), -item[1], item[0]))
+    return [seat for seat, _ in eligible]
+
+
 def _normalize_weights(weights: dict[str, Any]) -> dict[str, float]:
     cleaned: dict[str, float] = {}
     for key, value in weights.items():

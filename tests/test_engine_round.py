@@ -4,7 +4,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch
+from src.agents import rank_and_filter_seat_candidates
+from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch, score_seat_candidates
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -125,6 +126,28 @@ def test_allocate_seat_uses_conflict_mix_and_history():
         seat_frequency_history={"critic": 5, "proposer": 0, "repairer": 0},
     )
     assert seat == "repairer"
+
+
+def test_score_and_rank_seats_with_policy_hard_constraints():
+    scores = score_seat_candidates(
+        arena="mechanism",
+        conflict_type="execution",
+        evidence_gaps=["missing baseline", "missing instrument"],
+        recent_seat_history=["critic", "critic", "proposer"],
+        agent_module_weights={"economics": 0.2, "psychology": 0.1, "philosophy": 0.7},
+        human_subvalves={"execution_realism": 0.9, "bounded_attention": 0.2},
+    )
+
+    ranked = rank_and_filter_seat_candidates(
+        seat_scores=scores,
+        seat_policy={"forbidden_seats": ["critic"], "preferred_seats": ["repairer"]},
+        current_round=7,
+        seat_last_assigned_round={"repairer": 6},
+    )
+
+    assert scores["repairer"] > scores["proposer"]
+    assert "critic" not in ranked
+    assert ranked[0] == "repairer"
 
 
 def test_run_micro_round_defaults_missing_conflict_type_to_execution(tmp_path: Path):

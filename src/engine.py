@@ -160,6 +160,30 @@ def allocate_seat(
 ) -> str:
     """Allocate the best seat for an agent using arena/conflict/mix/history signals."""
 
+    score_map = score_seat_candidates(
+        arena=arena,
+        conflict_type=conflict_type,
+        evidence_gaps=[],
+        recent_seat_history=[seat for seat, count in seat_frequency_history.items() for _ in range(max(int(count), 0))],
+        agent_module_weights=agent_module_mix,
+        human_subvalves={},
+    )
+    if score_map:
+        return max(score_map.items(), key=lambda item: item[1])[0]
+    return "proposer"
+
+
+def score_seat_candidates(
+    *,
+    arena: str,
+    conflict_type: str,
+    evidence_gaps: list[str],
+    recent_seat_history: list[str],
+    agent_module_weights: dict[str, float],
+    human_subvalves: dict[str, float],
+) -> dict[str, float]:
+    """Score each seat with conflict/evidence/history/agent-mix signals."""
+
     arena_specs = load_arenas(Path(__file__).resolve().parents[1] / "config" / "arenas.yaml")
     spec = arena_specs.get(arena)
     seat_cfg = spec.seat_allocation if spec else {}
@@ -183,23 +207,45 @@ def allocate_seat(
     }
     history_penalty = float(seat_cfg.get("history_penalty", 0.2))
 
-    best_seat = "proposer"
-    best_score = float("-inf")
+    recent_history = [str(item).strip().lower() for item in recent_seat_history if str(item).strip()]
+    seat_frequency_history: dict[str, int] = {}
+    for seat in recent_history:
+        seat_frequency_history[seat] = seat_frequency_history.get(seat, 0) + 1
+
+    evidence_gap_count = len([gap for gap in evidence_gaps if str(gap).strip()])
+    evidence_bias = {
+        "proposer": -0.05,
+        "critic": 0.08,
+        "repairer": 0.18,
+    }
+    subvalve_bias = {
+        "execution_realism": {"repairer": 0.20, "critic": 0.08},
+        "bounded_attention": {"critic": 0.15},
+        "social_interpretation": {"proposer": 0.10, "critic": 0.06},
+        "practical_friction": {"repairer": 0.12, "critic": 0.04},
+    }
+
+    scores: dict[str, float] = {}
     for seat, base in base_scores.items():
         score = float(base)
         score += float(conflict_bias.get(seat, 0.0)) if isinstance(conflict_bias, dict) else 0.0
 
-        for module, weight in agent_module_mix.items():
+        for module, weight in agent_module_weights.items():
             if not isinstance(weight, (int, float)):
                 continue
             score += float(weight) * float(module_bias.get(str(module).strip().lower(), {}).get(seat, 0.0))
 
-        score -= history_penalty * float(seat_frequency_history.get(seat, 0))
-        if score > best_score:
-            best_score = score
-            best_seat = seat
+        for subvalve, value in human_subvalves.items():
+            if not isinstance(value, (int, float)):
+                continue
+            score += float(value) * float(subvalve_bias.get(str(subvalve).strip().lower(), {}).get(seat, 0.0))
 
-    return best_seat
+        score += evidence_gap_count * evidence_bias.get(seat, 0.0)
+
+        score -= history_penalty * float(seat_frequency_history.get(seat, 0))
+        scores[seat] = round(score, 6)
+
+    return scores
 
 
 def _read_json(path: Path) -> dict[str, Any]:
