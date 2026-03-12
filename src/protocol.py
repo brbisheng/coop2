@@ -63,8 +63,11 @@ class DebateDecision(str, Enum):
 
 class DebateArena(str, Enum):
     PROBLEM_FRAMING = "problem_framing"
+    COUNTEREXAMPLE_SEARCH = "counterexample_search"
     MECHANISM = "mechanism"
     EMPIRICAL_GROUNDING = "empirical_grounding"
+    DECISION = "decision"
+    WRITING_PREP = "writing_prep"
 
 
 class CommitStatus(str, Enum):

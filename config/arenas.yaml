@@ -2,76 +2,273 @@
   "arenas": [
     {
       "arena_name": "problem_framing",
-      "accepted_artifact_types": ["research_idea", "question_card"],
+      "accepted_artifact_types": [
+        "research_idea",
+        "question_card"
+      ],
       "required_obligations": {
         "propose": 1,
         "independent_critiques": 2,
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"],
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
       "seat_allocation": {
-        "base_scores": {"proposer": 1.0, "critic": 1.1, "repairer": 0.9},
+        "base_scores": {
+          "proposer": 1.0,
+          "critic": 1.1,
+          "repairer": 0.9
+        },
         "conflict_bias": {
-          "execution": {"repairer": 0.4},
-          "goal": {"proposer": 0.3},
-          "method": {"critic": 0.3}
+          "execution": {
+            "repairer": 0.4
+          },
+          "goal": {
+            "proposer": 0.3
+          },
+          "method": {
+            "critic": 0.3
+          }
         },
         "history_penalty": 0.2
       },
       "anti_repetition": {
         "enabled": true,
-        "critical_seats": ["proposer", "critic"],
+        "critical_seats": [
+          "proposer",
+          "critic"
+        ],
         "consecutive_threshold": 3,
         "on_violation": "downweight"
       }
     },
     {
       "arena_name": "mechanism",
-      "accepted_artifact_types": ["research_idea", "mechanism_card"],
+      "accepted_artifact_types": [
+        "research_idea",
+        "mechanism_card"
+      ],
       "required_obligations": {
         "propose": 1,
         "independent_critiques": 2,
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"],
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
       "seat_allocation": {
-        "base_scores": {"proposer": 1.0, "critic": 1.0, "repairer": 1.0},
+        "base_scores": {
+          "proposer": 1.0,
+          "critic": 1.0,
+          "repairer": 1.0
+        },
         "conflict_bias": {
-          "execution": {"repairer": 0.5},
-          "method": {"critic": 0.4}
+          "execution": {
+            "repairer": 0.5
+          },
+          "method": {
+            "critic": 0.4
+          }
         },
         "history_penalty": 0.25
       },
       "anti_repetition": {
         "enabled": true,
-        "critical_seats": ["proposer", "critic"],
+        "critical_seats": [
+          "proposer",
+          "critic"
+        ],
         "consecutive_threshold": 2,
         "on_violation": "reject"
       }
     },
     {
       "arena_name": "empirical_grounding",
-      "accepted_artifact_types": ["research_idea", "data_plan_card"],
+      "accepted_artifact_types": [
+        "research_idea",
+        "data_plan_card"
+      ],
       "required_obligations": {
         "propose": 1,
         "independent_critiques": 2,
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"],
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
       "seat_allocation": {
-        "base_scores": {"proposer": 1.1, "critic": 1.0, "repairer": 0.9},
+        "base_scores": {
+          "proposer": 1.1,
+          "critic": 1.0,
+          "repairer": 0.9
+        },
         "conflict_bias": {
-          "measurement": {"critic": 0.4},
-          "execution": {"repairer": 0.3}
+          "measurement": {
+            "critic": 0.4
+          },
+          "execution": {
+            "repairer": 0.3
+          }
         },
         "history_penalty": 0.2
       },
       "anti_repetition": {
         "enabled": true,
-        "critical_seats": ["proposer", "critic"],
+        "critical_seats": [
+          "proposer",
+          "critic"
+        ],
+        "consecutive_threshold": 3,
+        "on_violation": "downweight"
+      }
+    },
+    {
+      "arena_name": "counterexample_search",
+      "accepted_artifact_types": [
+        "research_idea",
+        "counterexample_card"
+      ],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1,
+        "decision": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
+      "seat_allocation": {
+        "base_scores": {
+          "proposer": 0.9,
+          "critic": 1.2,
+          "repairer": 0.9
+        },
+        "conflict_bias": {
+          "definition": {
+            "critic": 0.4
+          },
+          "mechanism": {
+            "critic": 0.3
+          },
+          "evidence": {
+            "repairer": 0.2
+          }
+        },
+        "history_penalty": 0.25
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": [
+          "critic",
+          "repairer"
+        ],
+        "consecutive_threshold": 2,
+        "on_violation": "reject"
+      }
+    },
+    {
+      "arena_name": "decision",
+      "accepted_artifact_types": [
+        "research_idea",
+        "decision_card"
+      ],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1,
+        "decision": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
+      "seat_allocation": {
+        "base_scores": {
+          "proposer": 1.0,
+          "critic": 1.0,
+          "repairer": 1.1
+        },
+        "conflict_bias": {
+          "policy": {
+            "repairer": 0.4
+          },
+          "execution": {
+            "repairer": 0.3
+          },
+          "scope": {
+            "critic": 0.2
+          }
+        },
+        "history_penalty": 0.2
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": [
+          "proposer",
+          "repairer"
+        ],
+        "consecutive_threshold": 3,
+        "on_violation": "downweight"
+      }
+    },
+    {
+      "arena_name": "writing_prep",
+      "accepted_artifact_types": [
+        "research_idea",
+        "writing_brief"
+      ],
+      "required_obligations": {
+        "propose": 1,
+        "independent_critiques": 2,
+        "repair_or_merge": 1,
+        "decision": 1
+      },
+      "min_unique_agents": 3,
+      "allowed_outputs": [
+        "patch",
+        "dissent",
+        "merge"
+      ],
+      "seat_allocation": {
+        "base_scores": {
+          "proposer": 1.1,
+          "critic": 0.9,
+          "repairer": 1.0
+        },
+        "conflict_bias": {
+          "execution": {
+            "repairer": 0.3
+          },
+          "scope": {
+            "critic": 0.2
+          },
+          "definition": {
+            "proposer": 0.2
+          }
+        },
+        "history_penalty": 0.15
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": [
+          "proposer",
+          "critic"
+        ],
         "consecutive_threshold": 3,
         "on_violation": "downweight"
       }
