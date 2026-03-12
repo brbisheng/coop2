@@ -19,6 +19,8 @@ REQUIRED_AUDIT_FIELDS = (
     "confidence",
 )
 
+OPTIONAL_AUDIT_FIELDS = ("discipline_payload",)
+
 ALLOWED_EVIDENCE_TYPES = {"empirical", "theoretical", "expert_judgment", "anecdotal", "none"}
 ALLOWED_EVIDENCE_STRENGTH = {"strong", "medium", "weak", "none"}
 ALLOWED_EVIDENCE_REF_PREFIXES = ("doi:", "http://", "https://", "arxiv:", "dataset:", "report:", "doc:")
@@ -124,6 +126,18 @@ def validate_perspective_output(payload: dict[str, Any]) -> None:
     if not isinstance(payload["confidence"], (int, float)):
         raise PerspectiveValidationError("confidence must be numeric")
 
+    discipline_payload = payload.get("discipline_payload")
+    if discipline_payload is None:
+        return
+    if not isinstance(discipline_payload, dict):
+        raise PerspectiveValidationError("discipline_payload must be a dict keyed by module name")
+
+    for module_name, module_payload in discipline_payload.items():
+        if not isinstance(module_name, str) or not module_name.strip():
+            raise PerspectiveValidationError("discipline_payload keys must be non-empty module names")
+        if not isinstance(module_payload, dict):
+            raise PerspectiveValidationError("discipline_payload values must be dict payload containers")
+
 
 class EconomicsModule(BasePerspectiveModule):
     """Economics perspective for incentives and mechanism quality."""
@@ -209,6 +223,74 @@ class PsychologyModule(BasePerspectiveModule):
         return self._validated(payload)
 
 
+class StatisticsModule(BasePerspectiveModule):
+    """Statistics perspective placeholder implementation."""
+
+    name = "statistics"
+    version = "0.1"
+
+    def audit(
+        self,
+        artifact: dict[str, Any],
+        local_context: dict[str, Any],
+        unresolved_conflicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = {
+            "observations": [],
+            "criticisms": [],
+            "revisions": [],
+            "risks": [],
+            "questions": [],
+            "evidence_needs": [],
+            "evidence_refs": [],
+            "evidence_type": "none",
+            "evidence_strength": "none",
+            "evidence_gap": "statistics module placeholder awaiting domain-specific checks",
+            "confidence": 0.0,
+            "discipline_payload": {
+                "statistics": {
+                    "status": "placeholder",
+                    "checks": [],
+                }
+            },
+        }
+        return self._validated(payload)
+
+
+class PhysicsModule(BasePerspectiveModule):
+    """Physics perspective placeholder implementation."""
+
+    name = "physics"
+    version = "0.1"
+
+    def audit(
+        self,
+        artifact: dict[str, Any],
+        local_context: dict[str, Any],
+        unresolved_conflicts: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        payload = {
+            "observations": [],
+            "criticisms": [],
+            "revisions": [],
+            "risks": [],
+            "questions": [],
+            "evidence_needs": [],
+            "evidence_refs": [],
+            "evidence_type": "none",
+            "evidence_strength": "none",
+            "evidence_gap": "physics module placeholder awaiting domain-specific checks",
+            "confidence": 0.0,
+            "discipline_payload": {
+                "physics": {
+                    "status": "placeholder",
+                    "checks": [],
+                }
+            },
+        }
+        return self._validated(payload)
+
+
 MODULE_REGISTRY: dict[str, type[BasePerspectiveModule]] = {}
 
 
@@ -233,5 +315,5 @@ def get_registered_module_class(name: str) -> type[BasePerspectiveModule] | None
     return MODULE_REGISTRY.get(str(name).strip().lower())
 
 
-for _module in (EconomicsModule, PhilosophyModule, PsychologyModule):
+for _module in (EconomicsModule, PhilosophyModule, PsychologyModule, StatisticsModule, PhysicsModule):
     register_perspective_module(_module)

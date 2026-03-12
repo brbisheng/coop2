@@ -56,7 +56,7 @@ def test_validate_perspective_output_rejects_non_numeric_confidence():
 
 
 def test_module_registry_returns_mvp_modules():
-    for name in ("economics", "philosophy", "psychology"):
+    for name in ("economics", "philosophy", "psychology", "statistics", "physics"):
         module_cls = get_registered_module_class(name)
         assert module_cls is not None
         payload = module_cls().audit({}, {}, [])
@@ -181,3 +181,48 @@ def test_validate_perspective_output_requires_gap_when_refs_empty():
         assert "evidence_gap is required when evidence_refs is empty" in str(exc)
     else:
         raise AssertionError("expected PerspectiveValidationError for missing gap with empty refs")
+
+
+def test_validate_perspective_output_accepts_optional_discipline_payload():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": ["doi:10.1000/test"],
+        "evidence_type": "empirical",
+        "evidence_strength": "medium",
+        "evidence_gap": "",
+        "confidence": 0.8,
+        "discipline_payload": {
+            "statistics": {"status": "ok"},
+        },
+    }
+
+    validate_perspective_output(payload)
+
+
+def test_validate_perspective_output_rejects_invalid_discipline_payload_structure():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": ["doi:10.1000/test"],
+        "evidence_type": "empirical",
+        "evidence_strength": "medium",
+        "evidence_gap": "",
+        "confidence": 0.8,
+        "discipline_payload": {"": []},
+    }
+
+    try:
+        validate_perspective_output(payload)
+    except PerspectiveValidationError as exc:
+        assert "discipline_payload" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for invalid discipline_payload")
