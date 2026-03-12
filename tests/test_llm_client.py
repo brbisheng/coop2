@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from src.llm_client import OpenRouterClient
-from src.orchestrator import REQUIRED_SAMPLING_KEYS, SEAT_SAMPLING_CONFIG, get_sampling_config_for_seat
+from src.orchestrator import (
+    REQUIRED_SAMPLING_KEYS,
+    SEAT_SAMPLING_CONFIG,
+    build_seat_context,
+    get_sampling_config_for_seat,
+)
 
 
 @pytest.mark.parametrize("seat", ["proposer", "critic_a", "critic_b", "repairer", "transfer_seat"])
@@ -56,3 +61,53 @@ def test_openrouter_client_injects_per_seat_sampling_and_persists_trace(monkeypa
 def test_unknown_seat_raises_error():
     with pytest.raises(ValueError):
         get_sampling_config_for_seat("critic")
+
+
+def test_build_seat_context_windows():
+    round_state = {
+        "topic": "t",
+        "history_summary": "h",
+        "proposal": {"p": 1},
+        "minimal_evidence": ["e1"],
+        "critique_a": {"a": 1},
+        "critique_b": {"b": 1},
+        "transfer": {"x": 1},
+    }
+
+    assert build_seat_context(round_state, "proposer") == {"topic": "t", "history_summary": "h"}
+    assert build_seat_context(round_state, "critic_a") == {"proposal": {"p": 1}, "minimal_evidence": ["e1"]}
+    assert build_seat_context(round_state, "critic_b") == {"proposal": {"p": 1}, "critique_a": {"a": 1}}
+    assert build_seat_context(round_state, "repairer") == {
+        "proposal": {"p": 1},
+        "critique_a": {"a": 1},
+        "critique_b": {"b": 1},
+        "transfer": {"x": 1},
+    }
+    assert build_seat_context(round_state, "transfer_seat") == {"proposal": {"p": 1}, "critique": {"a": 1}}
+
+
+def test_openrouter_client_persists_seat_context_trace(monkeypatch, tmp_path: Path):
+    def fake_post_json(self, *, url, headers, body, timeout_s):
+        return {"id": "resp-2", "choices": [{"message": {"content": "ok"}}]}
+
+    monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
+
+    client = OpenRouterClient(api_key="k", model="openai/gpt-4o-mini")
+    client.run_seat(
+        seat="repairer",
+        round_index=4,
+        messages=[{"role": "user", "content": "hello"}],
+        trace_dir=tmp_path,
+        round_state={
+            "proposal": {"id": "p1"},
+            "critique_a": {"id": "c1"},
+            "critique_b": {"id": "c2"},
+            "transfer": {"id": "t1"},
+        },
+    )
+
+    context_file = tmp_path / "round_04_repairer_context.json"
+    assert context_file.exists()
+    payload = json.loads(context_file.read_text(encoding="utf-8"))
+    assert payload["seat"] == "repairer"
+    assert sorted(payload["seat_context"].keys()) == ["critique_a", "critique_b", "proposal", "transfer"]

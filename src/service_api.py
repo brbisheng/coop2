@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .engine import (
+    _build_round_input,
     build_continuation_pack,
     export_manuscript_skeleton,
     load_artifact_version,
@@ -13,6 +17,7 @@ from .engine import (
 )
 from .memory import ContinuationPack
 from .protocol import DebateArena, ModelValidationError, parse_enum
+from .orchestrator import build_seat_context
 from .soul import SoulValidationError, strip_soul_fields_for_governance, validate_soul_profile
 
 
@@ -48,6 +53,7 @@ class RoundRunRequest:
     unresolved_dissent_saved: bool
     perspective_audits: list[dict[str, Any]]
     soul_profile: dict[str, Any]
+    seat_contexts: dict[str, dict[str, Any]]
 
     @classmethod
     def from_api_json(cls, payload: dict[str, Any] | None) -> "RoundRunRequest":
@@ -99,6 +105,10 @@ class RoundRunRequest:
             if not isinstance(value, list):
                 raise ServiceApiValidationError(f"run_round.{field_name} must be a list")
 
+        seat_contexts_raw = raw.get("seat_contexts", {})
+        if not isinstance(seat_contexts_raw, dict):
+            raise ServiceApiValidationError("run_round.seat_contexts must be an object when provided")
+
         return cls(
             session_dir=str(raw["session_dir"]),
             artifact_id=str(raw["artifact_id"]),
@@ -112,6 +122,11 @@ class RoundRunRequest:
             unresolved_dissent_saved=bool(raw.get("unresolved_dissent_saved", False)),
             perspective_audits=[item for item in perspective_audits if isinstance(item, dict)],
             soul_profile=soul_profile,
+            seat_contexts={
+                str(seat).strip().lower(): dict(ctx)
+                for seat, ctx in seat_contexts_raw.items()
+                if str(seat).strip() and isinstance(ctx, dict)
+            },
         )
 
 
@@ -208,10 +223,56 @@ class ContinuationPackResponse:
         }
 
 
+def _append_round_audit_trace(
+    *,
+    session_dir: str,
+    artifact_id: str,
+    round_input: dict[str, Any],
+    seat_contexts: dict[str, dict[str, Any]],
+) -> None:
+    trace_dir = Path(session_dir) / "traces"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = trace_dir / "run_round_audit_trace.jsonl"
+
+    seat_context_summary = {
+        seat: sorted(context.keys())
+        for seat, context in seat_contexts.items()
+        if isinstance(context, dict)
+    }
+
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "artifact_id": artifact_id,
+        "round_input": round_input,
+        "seat_context_summary": seat_context_summary,
+    }
+    with trace_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
 def run_round(payload: dict[str, Any] | None) -> dict[str, Any]:
     """API facade for one deliberation round."""
 
     request = RoundRunRequest.from_api_json(payload)
+    final_round_input = _build_round_input(
+        request.critiques,
+        request.round_input,
+        request.accepted_patches,
+        proposed_action=request.proposed_action.strip().lower(),
+    )
+
+    default_seat_contexts = {
+        seat: build_seat_context(final_round_input, seat)
+        for seat in ("proposer", "critic_a", "critic_b", "repairer", "transfer_seat")
+    }
+    seat_contexts = {**default_seat_contexts, **request.seat_contexts}
+    _append_round_audit_trace(
+        session_dir=request.session_dir,
+        artifact_id=request.artifact_id,
+        round_input=final_round_input,
+        seat_contexts=seat_contexts,
+    )
+
     result = run_micro_deliberation(
         session_dir=request.session_dir,
         artifact_id=request.artifact_id,

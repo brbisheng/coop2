@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib import request
 
-from .orchestrator import get_sampling_config_for_seat
+from .orchestrator import build_seat_context, get_sampling_config_for_seat
 
 
 @dataclass(slots=True)
@@ -29,6 +29,7 @@ class OpenRouterClient:
         trace_dir: str | Path = "traces",
         timeout_s: float = 60.0,
         extra_body: dict[str, Any] | None = None,
+        round_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         sampling = get_sampling_config_for_seat(seat)
         request_body: dict[str, Any] = {
@@ -49,6 +50,8 @@ class OpenRouterClient:
             timeout_s=timeout_s,
         )
 
+        seat_context = build_seat_context(round_state or {}, seat) if isinstance(round_state, dict) else {}
+
         self._write_trace(
             trace_dir=Path(trace_dir),
             round_index=round_index,
@@ -57,6 +60,13 @@ class OpenRouterClient:
             request_body=request_body,
             response_body=payload,
         )
+        if seat_context:
+            self._write_context(
+                trace_dir=Path(trace_dir),
+                round_index=round_index,
+                seat=seat,
+                seat_context=seat_context,
+            )
         return payload
 
     def _post_json(
@@ -101,3 +111,23 @@ class OpenRouterClient:
         }
         trace_path.write_text(json.dumps(trace_payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return trace_path
+
+    def _write_context(
+        self,
+        *,
+        trace_dir: Path,
+        round_index: int,
+        seat: str,
+        seat_context: dict[str, Any],
+    ) -> Path:
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        seat_key = str(seat).strip().lower()
+        context_path = trace_dir / f"round_{int(round_index):02d}_{seat_key}_context.json"
+        context_payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "seat": seat_key,
+            "round_index": int(round_index),
+            "seat_context": seat_context,
+        }
+        context_path.write_text(json.dumps(context_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return context_path

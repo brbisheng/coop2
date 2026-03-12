@@ -70,3 +70,54 @@ def get_sampling_config_for_seat(seat: str) -> dict[str, Any]:
         if required not in config:
             raise ValueError(f"Sampling config for seat '{seat_key}' missing required key: {required}")
     return config
+
+
+def build_seat_context(round_state: dict[str, Any], seat: str) -> dict[str, Any]:
+    """Build seat-scoped context window from one round state payload."""
+
+    if not isinstance(round_state, dict):
+        raise ValueError("round_state must be a dict")
+
+    seat_key = str(seat).strip().lower()
+    if seat_key not in SEAT_SAMPLING_CONFIG:
+        supported = ", ".join(sorted(SEAT_SAMPLING_CONFIG))
+        raise ValueError(f"Unsupported seat '{seat}'. Supported seats: {supported}")
+
+    proposal = round_state.get("proposal")
+    critique_a = round_state.get("critique_a")
+    critique_b = round_state.get("critique_b")
+    transfer = round_state.get("transfer")
+
+    one_critique = critique_a if critique_a not in (None, {}, []) else critique_b
+
+    seat_view: dict[str, Any]
+    if seat_key == "proposer":
+        seat_view = {
+            "topic": round_state.get("topic"),
+            "history_summary": round_state.get("history_summary"),
+        }
+    elif seat_key == "critic_a":
+        seat_view = {
+            "proposal": proposal,
+            "minimal_evidence": round_state.get("minimal_evidence"),
+        }
+    elif seat_key == "critic_b":
+        seat_view = {
+            "proposal": proposal,
+            "critique_a": critique_a,
+        }
+    elif seat_key == "repairer":
+        seat_view = {
+            "proposal": proposal,
+            "critique_a": critique_a,
+            "critique_b": critique_b,
+            "transfer": transfer,
+        }
+    else:  # transfer_seat
+        seat_view = {
+            "proposal": proposal,
+            "critique": one_critique,
+        }
+
+    # Keep absent values out of the context window payload.
+    return {key: value for key, value in seat_view.items() if value not in (None, {}, [])}

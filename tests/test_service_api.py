@@ -102,6 +102,13 @@ def test_api_facade_round_continuation_and_artifact_read(tmp_path: Path):
     assert round_result["commit"]["artifact_id"] == "artifact_main"
     assert round_result["soul_profile"] == {"style": {"tone": "concise"}}
 
+    audit_trace_path = session_dir / "traces" / "run_round_audit_trace.jsonl"
+    assert audit_trace_path.exists()
+    audit_rows = [json.loads(line) for line in audit_trace_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert audit_rows[-1]["artifact_id"] == "artifact_main"
+    assert "proposer" in audit_rows[-1]["seat_context_summary"]
+    assert "history_summary" not in audit_rows[-1]["seat_context_summary"]["proposer"]
+
     continuation_payload = build_continuation(
         {
             "session_dir": str(session_dir),
