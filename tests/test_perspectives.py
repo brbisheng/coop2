@@ -20,6 +20,7 @@ def test_validate_perspective_output_missing_required_field():
         "evidence_needs": [],
         "evidence_refs": [],
         "evidence_type": "none",
+        "evidence_strength": "none",
         "evidence_gap": "need baseline evidence",
     }
 
@@ -41,6 +42,7 @@ def test_validate_perspective_output_rejects_non_numeric_confidence():
         "evidence_needs": [],
         "evidence_refs": ["doi:10.1000/test"],
         "evidence_type": "empirical",
+        "evidence_strength": "medium",
         "evidence_gap": "",
         "confidence": "high",
     }
@@ -79,6 +81,7 @@ def test_register_perspective_module_supports_dynamic_registration():
                     "evidence_needs": [],
                     "evidence_refs": ["doi:10.1000/temp"],
                     "evidence_type": "empirical",
+                    "evidence_strength": "medium",
                     "evidence_gap": "",
                     "confidence": 0.1,
                 }
@@ -98,6 +101,7 @@ def test_validate_perspective_output_rejects_missing_evidence_completeness():
         "evidence_needs": ["need"],
         "evidence_refs": [],
         "evidence_type": "empirical",
+        "evidence_strength": "medium",
         "evidence_gap": "",
         "confidence": 0.8,
     }
@@ -118,8 +122,9 @@ def test_validate_perspective_output_rejects_fake_evidence():
         "risks": ["risk"],
         "questions": ["q"],
         "evidence_needs": ["need"],
-        "evidence_refs": ["fake://made-up-source"],
+        "evidence_refs": ["doc:fake-made-up-source"],
         "evidence_type": "empirical",
+        "evidence_strength": "medium",
         "evidence_gap": "",
         "confidence": 0.8,
     }
@@ -130,3 +135,49 @@ def test_validate_perspective_output_rejects_fake_evidence():
         assert "fake evidence" in str(exc)
     else:
         raise AssertionError("expected PerspectiveValidationError for fake evidence")
+
+
+def test_validate_perspective_output_rejects_unstructured_evidence_ref():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": ["paper-123"],
+        "evidence_type": "empirical",
+        "evidence_strength": "medium",
+        "evidence_gap": "",
+        "confidence": 0.8,
+    }
+
+    try:
+        validate_perspective_output(payload)
+    except PerspectiveValidationError as exc:
+        assert "supported structured reference prefix" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for invalid evidence ref format")
+
+
+def test_validate_perspective_output_requires_gap_when_refs_empty():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": [],
+        "evidence_type": "theoretical",
+        "evidence_strength": "weak",
+        "evidence_gap": "",
+        "confidence": 0.7,
+    }
+
+    try:
+        validate_perspective_output(payload)
+    except PerspectiveValidationError as exc:
+        assert "evidence_gap is required when evidence_refs is empty" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for missing gap with empty refs")

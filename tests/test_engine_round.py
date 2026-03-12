@@ -475,6 +475,7 @@ def test_run_perspective_audit_batch_rejects_invalid_module_payload():
                 "evidence_needs": [],
                 "evidence_refs": [],
                 "evidence_type": "none",
+                "evidence_strength": "none",
                 "evidence_gap": "gap",
             }
 
@@ -508,8 +509,9 @@ def test_run_perspective_audit_batch_rejects_fake_evidence_payload():
                 "risks": ["risk"],
                 "questions": ["q"],
                 "evidence_needs": ["need"],
-                "evidence_refs": ["fake://fabricated"],
+                "evidence_refs": ["doc:fake-fabricated"],
                 "evidence_type": "empirical",
+                "evidence_strength": "medium",
                 "evidence_gap": "",
                 "confidence": 0.6,
             }
@@ -526,6 +528,41 @@ def test_run_perspective_audit_batch_rejects_fake_evidence_payload():
     else:
         raise AssertionError("expected PerspectiveValidationError for fake evidence")
 
+
+
+def test_run_perspective_audit_batch_rejects_unstructured_evidence_ref_payload():
+    from src.perspectives import PerspectiveValidationError
+
+    class _BadRefModule:
+        name = "bad_ref"
+        version = "0.1"
+
+        def audit(self, artifact, local_context, unresolved_conflicts):
+            return {
+                "observations": ["obs"],
+                "criticisms": ["crit"],
+                "revisions": ["rev"],
+                "risks": ["risk"],
+                "questions": ["q"],
+                "evidence_needs": ["need"],
+                "evidence_refs": ["source-42"],
+                "evidence_type": "empirical",
+                "evidence_strength": "weak",
+                "evidence_gap": "",
+                "confidence": 0.4,
+            }
+
+    try:
+        run_perspective_audit_batch(
+            modules=[_BadRefModule()],
+            artifact={"artifact_id": "a1"},
+            local_context={"arena": "mechanism"},
+            unresolved_conflicts=[],
+        )
+    except PerspectiveValidationError as exc:
+        assert "supported structured reference prefix" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for unstructured evidence ref")
 
 def test_run_micro_round_surfaces_evidence_gap_in_open_issues_and_reasons(tmp_path: Path):
     session = tmp_path / "session_evidence_gap"
@@ -560,6 +597,7 @@ def test_run_micro_round_surfaces_evidence_gap_in_open_issues_and_reasons(tmp_pa
                 "evidence_needs": ["need"],
                 "evidence_refs": [],
                 "evidence_type": "none",
+                "evidence_strength": "none",
                 "evidence_gap": "missing baseline dataset",
                 "confidence": 0.5,
             },
@@ -581,6 +619,8 @@ def test_run_micro_round_surfaces_evidence_gap_in_open_issues_and_reasons(tmp_pa
 
     assert "evidence_gap: missing baseline dataset" in result["event"]["open_issues"]
     assert "evidence gaps remain unresolved" in result["event"]["reasons"]
+    assert result["event"]["quality_metrics"]["evidence_coverage_rate"] == 0.0
+    assert result["event"]["quality_metrics"]["uncovered_key_claims"]
 
 
 def test_run_micro_round_aggregates_three_perspective_modules(tmp_path: Path):
