@@ -13,7 +13,13 @@ from .artifacts import normalize_conflict_type
 from .governor import validate_precommit_action
 from .arenas import load_arenas
 from .memory import ContinuationPack, build_minimal_context
-from .protocol import DebateArena, DebateDecision, parse_enum
+from .protocol import (
+    DebateArena,
+    DebateDecision,
+    is_independent_critique,
+    parse_enum,
+    persona_diversity_score,
+)
 from .storage import ensure_current_schema
 
 
@@ -95,6 +101,48 @@ def _required_obligation_report(arena_name: str, round_input: dict[str, Any]) ->
         "missing": missing,
     }
     return missing, report
+
+
+def _build_round_quality_metrics(
+    *,
+    obligation_report: dict[str, Any],
+    critiques: list[dict[str, Any]],
+    panel_state: dict[str, Any],
+    unresolved_dissents: list[dict[str, Any]],
+    unresolved_dissent_saved: bool | None,
+) -> dict[str, Any]:
+    required = obligation_report.get("required", {})
+    observed = obligation_report.get("observed", {})
+
+    required_total = sum(int(value) for value in required.values()) if isinstance(required, dict) else 0
+    observed_total = 0
+    if required_total > 0 and isinstance(required, dict) and isinstance(observed, dict):
+        observed_total = sum(min(int(observed.get(key, 0)), int(needed)) for key, needed in required.items())
+
+    obligation_completeness = 1.0 if required_total == 0 else observed_total / required_total
+
+    critique_independence = 0.0
+    critique_label = "insufficient_critiques"
+    if len(critiques) >= 2:
+        critique_independent = is_independent_critique(critiques[0], critiques[1])
+        critique_independence = 1.0 if critique_independent else 0.0
+        critique_label = "independent" if critique_independent else "overlapping"
+
+    diversity_score = persona_diversity_score(panel_state)
+    has_dissent = bool(unresolved_dissents)
+    dissent_retained = (not has_dissent) or (unresolved_dissent_saved is True)
+
+    return {
+        "obligation_completeness": round(obligation_completeness, 4),
+        "obligation_observed": observed_total,
+        "obligation_required": required_total,
+        "critique_independence": critique_independence,
+        "critique_independence_label": critique_label,
+        "diversity_score": round(diversity_score, 4),
+        "dissent_retained": dissent_retained,
+        "dissent_status": "retained" if dissent_retained else "missing",
+        "unresolved_dissent_count": len(unresolved_dissents),
+    }
 
 
 def _action_decision(action: str, allowed: bool) -> str:
@@ -396,6 +444,14 @@ def run_micro_deliberation(
             unresolved_dissents=unresolved_dissents,
             unresolved_dissent_saved=unresolved_dissent_saved,
         )
+
+    quality_metrics = _build_round_quality_metrics(
+        obligation_report=obligation_report,
+        critiques=critiques,
+        panel_state=panel_state,
+        unresolved_dissents=unresolved_dissents or [],
+        unresolved_dissent_saved=unresolved_dissent_saved,
+    )
     decision = _action_decision(action, commit_allowed)
 
     root = Path(session_dir)
@@ -482,6 +538,7 @@ def run_micro_deliberation(
         "schema_version": 3,
         "perspective_audits": perspective_audits,
         "patch_rationale": audit_summary["rationale"],
+        "quality_metrics": quality_metrics,
     }
 
     event = {
@@ -504,6 +561,7 @@ def run_micro_deliberation(
         "perspective_audits": perspective_audits,
         "patch_rationale": audit_summary["rationale"],
         "audit_summary": audit_summary,
+        "quality_metrics": quality_metrics,
     }
 
     step_events = [
@@ -561,6 +619,7 @@ def run_micro_deliberation(
                 "missing_steps": missing_steps,
                 "missing_obligations": missing_obligations,
                 "obligation_report": obligation_report,
+                "quality_metrics": quality_metrics,
             },
             "timestamp": now,
         },

@@ -5,7 +5,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.engine import build_continuation_pack, load_artifact_version, run_micro_deliberation
-from src.storage import ensure_current_schema
+from src.storage import (
+    ensure_current_schema,
+    summarize_session_quality_from_dir,
+    summarize_session_quality_trends,
+)
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -179,3 +183,61 @@ def test_continuation_compatible_with_new_artifact_head_layout(tmp_path: Path):
 
     pack = build_continuation_pack(session_dir, goal="resume", target_artifact_id="artifact_main")
     assert pack.minimal_context["commits"][0]["artifact_id"] == "artifact_main_v2"
+
+
+
+def test_summarize_session_quality_trends_from_round_events():
+    events = [
+        {
+            "type": "deliberation.round",
+            "quality_metrics": {
+                "obligation_completeness": 1.0,
+                "critique_independence": 1.0,
+                "diversity_score": 0.4,
+                "dissent_retained": True,
+            },
+        },
+        {
+            "type": "deliberation.round",
+            "quality_metrics": {
+                "obligation_completeness": 0.5,
+                "critique_independence": 0.0,
+                "diversity_score": 0.2,
+                "dissent_retained": False,
+            },
+        },
+        {"type": "deliberation.proposal", "payload": {}},
+    ]
+
+    summary = summarize_session_quality_trends(events)
+
+    assert summary["round_count"] == 2
+    assert summary["series"]["obligation_completeness"] == [1.0, 0.5]
+    assert summary["series"]["critique_independence"] == [1.0, 0.0]
+    assert summary["series"]["dissent_retained"] == [True, False]
+    assert summary["averages"]["obligation_completeness"] == 0.75
+    assert summary["averages"]["dissent_retained_ratio"] == 0.5
+
+
+
+def test_summarize_session_quality_from_dir_reads_event_log(tmp_path: Path):
+    session = tmp_path / "session_metrics"
+    session.mkdir(parents=True)
+    _write_jsonl(
+        session / "event_log.jsonl",
+        [
+            {
+                "type": "deliberation.round",
+                "quality_metrics": {
+                    "obligation_completeness": 1.0,
+                    "critique_independence": 1.0,
+                    "diversity_score": 0.3,
+                    "dissent_retained": True,
+                },
+            }
+        ],
+    )
+
+    summary = summarize_session_quality_from_dir(session)
+    assert summary["round_count"] == 1
+    assert summary["averages"]["diversity_score"] == 0.3

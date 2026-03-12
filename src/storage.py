@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 import re
 from typing import Any
 
@@ -154,6 +156,93 @@ def _migrate_v2_to_v3(record: dict[str, Any]) -> dict[str, Any]:
             upgraded["artifact_ref"] = f"artifacts/{artifact_id}/{version}.json"
 
     return upgraded
+
+
+
+
+
+
+
+def summarize_session_quality_from_dir(session_dir: str | Path) -> dict[str, Any]:
+    """Load one session's event log and summarize round quality trends."""
+
+    event_log_path = Path(session_dir) / "event_log.jsonl"
+    if not event_log_path.exists():
+        return summarize_session_quality_trends([])
+
+    events: list[dict[str, Any]] = []
+    with event_log_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            payload = line.strip()
+            if not payload:
+                continue
+            raw = json.loads(payload)
+            if isinstance(raw, dict):
+                events.append(raw)
+
+    return summarize_session_quality_trends(events)
+
+
+def summarize_session_quality_trends(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate deliberation round quality metrics into session-level trend statistics."""
+
+    round_events = [
+        event
+        for event in events
+        if isinstance(event, dict)
+        and event.get("type") == "deliberation.round"
+        and isinstance(event.get("quality_metrics"), dict)
+    ]
+
+    if not round_events:
+        return {
+            "round_count": 0,
+            "series": {
+                "obligation_completeness": [],
+                "critique_independence": [],
+                "diversity_score": [],
+                "dissent_retained": [],
+            },
+            "averages": {
+                "obligation_completeness": 0.0,
+                "critique_independence": 0.0,
+                "diversity_score": 0.0,
+                "dissent_retained_ratio": 0.0,
+            },
+        }
+
+    obligation_series: list[float] = []
+    independence_series: list[float] = []
+    diversity_series: list[float] = []
+    dissent_series: list[bool] = []
+
+    for event in round_events:
+        metrics = event["quality_metrics"]
+        obligation_series.append(float(metrics.get("obligation_completeness", 0.0)))
+        independence_series.append(float(metrics.get("critique_independence", 0.0)))
+        diversity_series.append(float(metrics.get("diversity_score", 0.0)))
+        dissent_series.append(bool(metrics.get("dissent_retained", False)))
+
+    round_count = len(round_events)
+
+    def _avg(values: list[float]) -> float:
+        return round(sum(values) / len(values), 4) if values else 0.0
+
+    return {
+        "round_count": round_count,
+        "series": {
+            "obligation_completeness": obligation_series,
+            "critique_independence": independence_series,
+            "diversity_score": diversity_series,
+            "dissent_retained": dissent_series,
+        },
+        "averages": {
+            "obligation_completeness": _avg(obligation_series),
+            "critique_independence": _avg(independence_series),
+            "diversity_score": _avg(diversity_series),
+            "dissent_retained_ratio": round(sum(1 for item in dissent_series if item) / round_count, 4),
+        },
+    }
 
 
 _MIGRATION_STEPS = {
