@@ -10,6 +10,9 @@ from src.arenas import ArenaConfigError, load_arenas
 def test_load_arenas_from_config():
     specs = load_arenas("config/arenas.yaml")
     assert set(specs.keys()) == {"problem_framing", "mechanism", "empirical_grounding"}
+    mechanism = specs["mechanism"]
+    assert mechanism.seat_allocation["history_penalty"] > 0
+    assert mechanism.anti_repetition["enabled"] is True
 
 
 def test_load_arenas_rejects_low_independent_critiques(tmp_path: Path):

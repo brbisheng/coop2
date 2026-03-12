@@ -14,7 +14,9 @@
         "philosophy": 0.20
       },
       "seat_policy": {
-        "preferred_seat": "proposer"
+        "preferred_seats": ["proposer", "repairer"],
+        "forbidden_seats": ["critic"],
+        "cooldown_rounds": 1
       }
     },
     {
@@ -31,7 +33,9 @@
         "economics": 0.20
       },
       "seat_policy": {
-        "preferred_seat": "critic"
+        "preferred_seat": "critic",
+        "forbidden_seats": ["proposer"],
+        "cooldown_rounds": 2
       }
     },
     {
@@ -48,7 +52,9 @@
         "economics": 0.20
       },
       "seat_policy": {
-        "preferred_seat": "repairer"
+        "preferred_seat": "repairer",
+        "forbidden_seats": [],
+        "cooldown_rounds": 1
       }
     }
   ]

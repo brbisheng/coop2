@@ -4,7 +4,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.engine import run_micro_deliberation, run_perspective_audit_batch
+from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -106,6 +106,16 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert (session / "dissent" / "d-1.json").exists()
     dissent_saved = json.loads((session / "dissent" / "d-1.json").read_text(encoding="utf-8"))
     assert dissent_saved["conflict_type"] == "mechanism"
+
+
+def test_allocate_seat_uses_conflict_mix_and_history():
+    seat = allocate_seat(
+        arena="mechanism",
+        conflict_type="execution",
+        agent_module_mix={"economics": 0.2, "psychology": 0.1, "philosophy": 0.7},
+        seat_frequency_history={"critic": 5, "proposer": 0, "repairer": 0},
+    )
+    assert seat == "repairer"
 
 
 def test_run_micro_round_defaults_missing_conflict_type_to_execution(tmp_path: Path):

@@ -13,6 +13,53 @@ from .protocol import (
 )
 
 
+def _anti_repetition_check(panel_state: dict[str, Any]) -> tuple[bool, str | None]:
+    """Check if the same agent repeatedly holds critical seats over threshold."""
+
+    cfg = panel_state.get("anti_repetition", {})
+    if not isinstance(cfg, dict):
+        return True, None
+
+    enabled = bool(cfg.get("enabled", False))
+    if not enabled:
+        return True, None
+
+    threshold = int(cfg.get("consecutive_threshold", 3))
+    action = str(cfg.get("on_violation", "reject")).strip().lower()
+    critical_seats = {
+        str(item).strip().lower()
+        for item in cfg.get("critical_seats", ["proposer", "critic"])
+        if str(item).strip()
+    }
+    seat_history = panel_state.get("seat_history", [])
+    if not isinstance(seat_history, list) or not critical_seats:
+        return True, None
+
+    streak = 0
+    previous_agent: str | None = None
+    for row in seat_history:
+        if not isinstance(row, dict):
+            continue
+        seat = str(row.get("seat", "")).strip().lower()
+        if seat not in critical_seats:
+            continue
+        agent_id = str(row.get("agent_id", "")).strip()
+        if not agent_id:
+            continue
+        if agent_id == previous_agent:
+            streak += 1
+        else:
+            previous_agent = agent_id
+            streak = 1
+
+    if streak < threshold:
+        return True, None
+
+    if action == "downweight":
+        return True, "anti-repetition triggered: recommend downweight for repeated critical-seat owner"
+    return False, "anti-repetition triggered: repeated critical-seat owner exceeds threshold"
+
+
 def validate_precommit_action(
     proposed_action: str,
     critiques: list[dict[str, Any]],
@@ -74,7 +121,12 @@ def validate_precommit_action(
         and soul_policy_ok
     )
 
+    anti_repeat_ok, anti_repeat_reason = _anti_repetition_check(panel_state)
+    gates_passed = gates_passed and anti_repeat_ok
+
     if gates_passed:
+        if anti_repeat_reason:
+            return True, f"precommit checks passed; {anti_repeat_reason}"
         return True, "precommit checks passed"
 
     if action in allowed_on_failure:
@@ -93,6 +145,8 @@ def validate_precommit_action(
         reasons.append("unresolved dissent must be saved before commit")
     if not soul_policy_ok:
         reasons.append("soul profile cannot override commit rules/min critique constraints")
+    if anti_repeat_reason and not anti_repeat_ok:
+        reasons.append(anti_repeat_reason)
 
     reason_text = "; ".join(reasons) if reasons else "precommit checks failed"
     return (False, f"{reason_text}; only park/continue_discussion allowed")

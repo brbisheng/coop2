@@ -25,6 +25,55 @@ class AgentInstance:
     module_weights: dict[str, float] = field(default_factory=dict)
 
 
+def interpret_seat_policy(raw_policy: dict[str, Any] | None) -> dict[str, Any]:
+    """Normalize seat policy into explicit preference/forbidden/cooldown form."""
+
+    policy = raw_policy if isinstance(raw_policy, dict) else {}
+
+    preferred: list[str] = []
+    if isinstance(policy.get("preferred_seat"), str):
+        preferred.append(policy["preferred_seat"])
+    if isinstance(policy.get("preferred_seats"), list):
+        preferred.extend(item for item in policy["preferred_seats"] if isinstance(item, str))
+
+    forbidden: list[str] = []
+    if isinstance(policy.get("forbidden_seat"), str):
+        forbidden.append(policy["forbidden_seat"])
+    if isinstance(policy.get("forbidden_seats"), list):
+        forbidden.extend(item for item in policy["forbidden_seats"] if isinstance(item, str))
+
+    cooldown_raw = policy.get("cooldown_rounds", 0)
+    cooldown = int(cooldown_raw) if isinstance(cooldown_raw, (int, float)) else 0
+    cooldown = max(cooldown, 0)
+
+    return {
+        "preferred_seats": sorted({item.strip().lower() for item in preferred if item.strip()}),
+        "forbidden_seats": sorted({item.strip().lower() for item in forbidden if item.strip()}),
+        "cooldown_rounds": cooldown,
+    }
+
+
+def seat_policy_allows_seat(
+    seat_policy: dict[str, Any],
+    *,
+    seat: str,
+    current_round: int,
+    last_assigned_round: int | None,
+) -> bool:
+    """Check whether a seat policy allows assigning `seat` in current round."""
+
+    normalized = interpret_seat_policy(seat_policy)
+    seat_name = seat.strip().lower()
+    if seat_name in normalized["forbidden_seats"]:
+        return False
+
+    cooldown_rounds = int(normalized["cooldown_rounds"])
+    if last_assigned_round is not None and cooldown_rounds > 0:
+        if current_round - int(last_assigned_round) <= cooldown_rounds:
+            return False
+    return True
+
+
 def _normalize_weights(weights: dict[str, Any]) -> dict[str, float]:
     cleaned: dict[str, float] = {}
     for key, value in weights.items():
@@ -100,7 +149,7 @@ def build_agent_from_config(
         agent_id=agent_id,
         human_base=human_base,
         perspective_modules=modules,
-        seat_policy=dict(raw.get("seat_policy", {})),
+        seat_policy=interpret_seat_policy(dict(raw.get("seat_policy", {}))),
         memory_view=dict(raw.get("memory_view", {})),
         soul_profile=merged_soul,
         module_weights=module_weights,

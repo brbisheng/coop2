@@ -4,7 +4,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.agents import AgentConfigError, build_agent_from_config, persona_mix
+from src.agents import (
+    AgentConfigError,
+    build_agent_from_config,
+    persona_mix,
+    seat_policy_allows_seat,
+)
 
 
 class _Provider:
@@ -39,6 +44,21 @@ def test_build_agent_from_config_and_persona_mix_from_config_file():
     assert agent.agent_id == "agent_a"
     assert "human_base" in mix
     assert mix["human_base"] > 0
+    assert agent.seat_policy["preferred_seats"] == ["proposer", "repairer"]
+    assert agent.seat_policy["forbidden_seats"] == ["critic"]
+    assert agent.seat_policy["cooldown_rounds"] == 1
+
+
+def test_seat_policy_supports_preference_taboo_and_cooldown():
+    policy = {
+        "preferred_seat": "critic",
+        "forbidden_seats": ["proposer"],
+        "cooldown_rounds": 2,
+    }
+
+    assert seat_policy_allows_seat(policy, seat="critic", current_round=6, last_assigned_round=3) is True
+    assert seat_policy_allows_seat(policy, seat="proposer", current_round=6, last_assigned_round=1) is False
+    assert seat_policy_allows_seat(policy, seat="critic", current_round=4, last_assigned_round=3) is False
 
 
 
