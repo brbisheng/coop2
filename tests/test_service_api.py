@@ -125,6 +125,25 @@ def test_api_facade_round_continuation_and_artifact_read(tmp_path: Path):
     assert artifact_payload["artifact_id"] == "artifact_main"
     assert artifact_payload["version"] == "v1"
 
+    report_path = session_dir / "traces" / "round_report.json"
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert set(report) >= {
+        "seat_sampling_params",
+        "context_summary",
+        "attack_points",
+        "repair_coverage",
+        "transfer_four_slots",
+        "commit_decision",
+    }
+    assert (session_dir / "traces" / "round_0001_round_report.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_proposer_utterance_chain.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_critic_a_utterance_chain.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_critic_b_utterance_chain.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_transfer_seat_utterance_chain.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_repairer_utterance_chain.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_decision_utterance_chain.json").exists()
+
 
 def test_run_round_routes_soul_only_to_soul_ledger_not_governance(tmp_path: Path):
     session_dir = tmp_path / "session_api_dual_ledger"
@@ -159,3 +178,28 @@ def test_run_round_routes_soul_only_to_soul_ledger_not_governance(tmp_path: Path
     assert event["soul_trace_ref"].startswith("ledgers/soul/")
     soul_trace = json.loads((session_dir / event["soul_trace_ref"]).read_text(encoding="utf-8"))
     assert soul_trace["soul_profile"] == {"style": {"tone": "calm"}}
+
+
+def test_run_round_dry_run_generates_traces_without_commit_files(tmp_path: Path):
+    session_dir = tmp_path / "session_api_dry_run"
+
+    result = run_round(
+        {
+            "session_dir": str(session_dir),
+            "artifact_id": "artifact_dry",
+            "arena": "mechanism",
+            "proposed_action": "commit",
+            "critiques": _critiques(),
+            "panel_state": _panel_state(),
+            "accepted_patches": [{"proposed_changes": {"mechanism": "clarified"}}],
+            "dry_run": True,
+        }
+    )
+
+    assert result["dry_run"] is True
+    assert result["commit"]["artifact_ref"].startswith("dry_run/artifacts/")
+    assert not (session_dir / "commits.jsonl").exists()
+    assert not (session_dir / "event_log.jsonl").exists()
+    assert not (session_dir / "snapshot.json").exists()
+    assert (session_dir / "traces" / "round_report.json").exists()
+    assert (session_dir / "traces" / "round_0001_seat_proposer_utterance_chain.json").exists()
