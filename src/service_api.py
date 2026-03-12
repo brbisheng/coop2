@@ -13,7 +13,7 @@ from .engine import (
 )
 from .memory import ContinuationPack
 from .protocol import DebateArena, ModelValidationError, parse_enum
-from .soul import SoulValidationError, validate_soul_profile
+from .soul import SoulValidationError, strip_soul_fields_for_governance, validate_soul_profile
 
 
 class ServiceApiValidationError(ValueError):
@@ -29,6 +29,7 @@ def _require_mapping(payload: dict[str, Any] | None, *, endpoint: str) -> dict[s
 
 def _missing_required(payload: dict[str, Any], required: tuple[str, ...]) -> list[str]:
     return [field for field in required if field not in payload]
+
 
 
 @dataclass(slots=True)
@@ -80,6 +81,7 @@ class RoundRunRequest:
         panel_state = raw.get("panel_state")
         if not isinstance(panel_state, dict):
             raise ServiceApiValidationError("run_round.panel_state must be an object")
+        panel_state = strip_soul_fields_for_governance(panel_state)
 
         round_input = raw.get("round_input")
         if round_input is not None and not isinstance(round_input, dict):
@@ -222,6 +224,7 @@ def run_round(payload: dict[str, Any] | None) -> dict[str, Any]:
         unresolved_dissents=request.unresolved_dissents,
         unresolved_dissent_saved=request.unresolved_dissent_saved,
         perspective_audits=request.perspective_audits,
+        soul_profile=request.soul_profile,
     )
     return {
         "commit": result["commit"],

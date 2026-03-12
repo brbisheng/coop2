@@ -160,7 +160,65 @@ def _migrate_v2_to_v3(record: dict[str, Any]) -> dict[str, Any]:
 
 
 
+def analyze_dual_ledger_soul_influence(session_dir: str | Path) -> dict[str, Any]:
+    """Compare how different soul profiles map to the same cognitive output."""
 
+    root = Path(session_dir)
+    soul_dir = root / "ledgers" / "soul"
+    cognitive_dir = root / "ledgers" / "cognitive"
+
+    if not soul_dir.exists() or not cognitive_dir.exists():
+        return {
+            "cognitive_output_count": 0,
+            "comparisons": [],
+        }
+
+    cognitive_by_ref: dict[str, dict[str, Any]] = {}
+    for path in sorted(cognitive_dir.glob("*.json")):
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            continue
+        cognitive_by_ref[path.relative_to(root).as_posix()] = raw
+
+    traces_by_cognitive_ref: dict[str, list[dict[str, Any]]] = {}
+    for path in sorted(soul_dir.glob("*.json")):
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            continue
+        cognitive_ref = str(raw.get("cognitive_output_ref", "")).strip()
+        if not cognitive_ref:
+            continue
+        traces_by_cognitive_ref.setdefault(cognitive_ref, []).append(raw)
+
+    comparisons: list[dict[str, Any]] = []
+    for cognitive_ref, traces in traces_by_cognitive_ref.items():
+        if len(traces) < 2:
+            continue
+        unique_souls: dict[str, dict[str, Any]] = {}
+        for trace in traces:
+            soul_payload = trace.get("soul_profile", {})
+            if not isinstance(soul_payload, dict):
+                soul_payload = {}
+            soul_key = json.dumps(soul_payload, ensure_ascii=False, sort_keys=True)
+            unique_souls[soul_key] = soul_payload
+
+        if len(unique_souls) < 2:
+            continue
+
+        comparisons.append(
+            {
+                "cognitive_output_ref": cognitive_ref,
+                "cognitive_output": cognitive_by_ref.get(cognitive_ref, {}),
+                "soul_profiles": list(unique_souls.values()),
+                "trace_ids": [str(trace.get("soul_trace_id", "")).strip() for trace in traces],
+                "trace_count": len(traces),
+            }
+        )
+
+    return {
+        "cognitive_output_count": len(cognitive_by_ref),
+        "comparisons": comparisons,
+    }
 
 
 def summarize_session_quality_from_dir(session_dir: str | Path) -> dict[str, Any]:

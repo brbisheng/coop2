@@ -76,3 +76,23 @@ def validate_soul_payload(raw: dict[str, Any] | None) -> SoulProfile:
     """Backward-compatible alias for soul validation."""
 
     return validate_soul_profile(raw)
+
+
+def strip_soul_fields_for_governance(panel_state: dict[str, Any]) -> dict[str, Any]:
+    """Return governance-ready panel state with soul fields removed."""
+
+    normalized = dict(panel_state)
+    normalized.pop("soul_profile", None)
+
+    raw_agents = normalized.get("agents")
+    if isinstance(raw_agents, list):
+        clean_agents: list[dict[str, Any]] = []
+        for agent in raw_agents:
+            if not isinstance(agent, dict):
+                continue
+            clean_agent = dict(agent)
+            clean_agent.pop("soul_profile", None)
+            clean_agents.append(clean_agent)
+        normalized["agents"] = clean_agents
+
+    return normalized
