@@ -20,18 +20,19 @@ from .protocol import (
     parse_enum,
     persona_diversity_score,
 )
-from .orchestrator import validate_attack_response_alignment
+from .orchestrator import validate_attack_response_alignment, validate_transfer_payload
 from .storage import ensure_current_schema
 
 
 CONTINUE_LIKE_ACTIONS = {"continue", "continue_discussion", "discuss"}
-ROUND_STEPS = ("proposal", "critique_a", "critique_b", "repair", "decision")
+ROUND_STEPS = ("proposal", "critique_a", "critique_b", "transfer", "repair", "decision")
 
 ROUND_EVENT_TYPE = "deliberation.round"
 STEP_EVENT_TYPES = {
     "proposal": "deliberation.proposal",
     "critique_a": "deliberation.critique_a",
     "critique_b": "deliberation.critique_b",
+    "transfer": "deliberation.transfer",
     "repair": "deliberation.repair",
     "decision": "deliberation.decision",
 }
@@ -49,6 +50,15 @@ def _build_round_input(
     normalized.setdefault("proposal", {"present": True})
     normalized.setdefault("critique_a", critiques[0] if len(critiques) >= 1 else None)
     normalized.setdefault("critique_b", critiques[1] if len(critiques) >= 2 else None)
+    normalized.setdefault(
+        "transfer",
+        {
+            "source_domain_mechanism": "derived from proposal",
+            "structural_mapping": "map key constraints/mechanisms to target domain",
+            "breakpoints": ["assumption mismatch to be repaired"],
+            "new_testable_implications": "predict target-domain signal shifts under mapped constraints",
+        },
+    )
 
     default_patch: dict[str, Any] = {}
     for candidate in accepted_patches or []:
@@ -530,6 +540,20 @@ def run_micro_deliberation(
     round_input_data = _build_round_input(critiques, round_input, accepted_patches, proposed_action=action)
 
     repair_output = round_input_data.get("repair") if isinstance(round_input_data.get("repair"), dict) else {}
+    transfer_output_text = json.dumps(round_input_data.get("transfer", {}), ensure_ascii=False)
+    transfer_valid, transfer_reasons, transfer_payload = validate_transfer_payload(transfer_output_text)
+    if not transfer_valid:
+        round_input_data["transfer"] = None
+
+    transfer_breakpoints = []
+    if isinstance(transfer_payload, dict):
+        raw_breakpoints = transfer_payload.get("breakpoints")
+        if isinstance(raw_breakpoints, list):
+            transfer_breakpoints = [str(item).strip() for item in raw_breakpoints if str(item).strip()]
+
+    if transfer_breakpoints and isinstance(repair_output, dict):
+        repair_output.setdefault("responded_breakpoints", transfer_breakpoints)
+
     alignment = validate_attack_response_alignment(critiques=critiques, repair_output=repair_output)
     if alignment["unresolved_dissents"]:
         unresolved_dissents = [*(unresolved_dissents or []), *alignment["unresolved_dissents"]]
@@ -761,6 +785,16 @@ def run_micro_deliberation(
             "event_id": f"event_{uuid4().hex[:10]}",
             "artifact_id": artifact_id,
             "arena": arena_name,
+            "type": STEP_EVENT_TYPES["transfer"],
+            "round_event_id": event_id,
+            "step": "transfer",
+            "payload": round_input_data.get("transfer"),
+            "timestamp": now,
+        },
+        {
+            "event_id": f"event_{uuid4().hex[:10]}",
+            "artifact_id": artifact_id,
+            "arena": arena_name,
             "type": STEP_EVENT_TYPES["repair"],
             "round_event_id": event_id,
             "step": "repair",
@@ -783,6 +817,10 @@ def run_micro_deliberation(
                 "obligation_report": obligation_report,
                 "quality_metrics": quality_metrics,
                 "attack_response_alignment": alignment,
+                "transfer_validation": {
+                    "is_valid": transfer_valid,
+                    "reasons": transfer_reasons,
+                },
             },
             "timestamp": now,
         },

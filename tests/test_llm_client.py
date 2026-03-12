@@ -11,6 +11,7 @@ from src.orchestrator import (
     build_seat_context,
     get_prompt_template_for_seat,
     get_sampling_config_for_seat,
+    validate_transfer_payload,
     validate_seat_output,
 )
 
@@ -187,3 +188,37 @@ def test_validate_seat_output_enforces_unified_critic_and_repair_fields():
     )
     assert critic_bad is False
     assert any("缺少字段" in reason for reason in critic_bad_reasons)
+
+
+def test_validate_transfer_payload_requires_exact_four_slots():
+    ok, reasons, parsed = validate_transfer_payload(
+        '{"source_domain_mechanism": "m", "structural_mapping": "s", "breakpoints": ["b1"], "new_testable_implications": "n"}'
+    )
+    assert ok is True
+    assert reasons == []
+    assert isinstance(parsed, dict)
+
+    bad_ok, bad_reasons, _ = validate_transfer_payload(
+        '{"source_domain_mechanism": "m", "structural_mapping": "s", "breakpoints": ["b1"], "extra": 1}'
+    )
+    assert bad_ok is False
+    assert any("缺少字段: new_testable_implications" in reason for reason in bad_reasons)
+    assert any("仅允许四格字段" in reason for reason in bad_reasons)
+
+
+def test_repairer_must_cover_transfer_breakpoints():
+    valid, reasons = validate_seat_output(
+        seat="repairer",
+        output_text='{"addressed_attacks": [], "not_addressed_attacks": [], "patch": {}, "new_testable_implication": "minimal cover risk", "responded_breakpoints": ["bp-a", "bp-b"], "summary": "minimal cover risk"}',
+        seat_context={"transfer_breakpoints": ["bp-a", "bp-b"]},
+    )
+    assert valid is True
+    assert reasons == []
+
+    invalid, invalid_reasons = validate_seat_output(
+        seat="repairer",
+        output_text='{"addressed_attacks": [], "not_addressed_attacks": [], "patch": {}, "new_testable_implication": "minimal cover risk", "responded_breakpoints": ["bp-a"], "summary": "minimal cover risk"}',
+        seat_context={"transfer_breakpoints": ["bp-a", "bp-b"]},
+    )
+    assert invalid is False
+    assert any("repair 必须逐条回应 transfer breakpoints" in reason for reason in invalid_reasons)
