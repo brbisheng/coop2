@@ -528,6 +528,7 @@ def run_micro_deliberation(
     unresolved_dissent_saved: bool | None = None,
     perspective_audits: list[dict[str, Any]] | None = None,
     soul_profile: dict[str, Any] | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Run one structured deliberation round and persist core records.
 
@@ -724,12 +725,15 @@ def run_micro_deliberation(
         "timestamp": now,
         "schema_version": 1,
     }
-    cognitive_output_ref = _write_ledger_record(
-        root,
-        ledger_name="cognitive",
-        record_id=cognitive_output["cognitive_output_id"],
-        payload=cognitive_output,
-    )
+    if dry_run:
+        cognitive_output_ref = f"dry_run/ledgers/cognitive/{cognitive_output['cognitive_output_id']}.json"
+    else:
+        cognitive_output_ref = _write_ledger_record(
+            root,
+            ledger_name="cognitive",
+            record_id=cognitive_output["cognitive_output_id"],
+            payload=cognitive_output,
+        )
 
     normalized_soul_profile = dict(soul_profile) if isinstance(soul_profile, dict) else {}
     soul_trace = {
@@ -741,12 +745,15 @@ def run_micro_deliberation(
         "timestamp": now,
         "schema_version": 1,
     }
-    soul_trace_ref = _write_ledger_record(
-        root,
-        ledger_name="soul",
-        record_id=soul_trace["soul_trace_id"],
-        payload=soul_trace,
-    )
+    if dry_run:
+        soul_trace_ref = f"dry_run/ledgers/soul/{soul_trace['soul_trace_id']}.json"
+    else:
+        soul_trace_ref = _write_ledger_record(
+            root,
+            ledger_name="soul",
+            record_id=soul_trace["soul_trace_id"],
+            payload=soul_trace,
+        )
     event["cognitive_output_ref"] = cognitive_output_ref
     event["soul_trace_ref"] = soul_trace_ref
 
@@ -835,13 +842,16 @@ def run_micro_deliberation(
         latest_commits = []
     latest_commits = [*latest_commits, commit_id]
 
-    artifact_ref, _artifact_payload = _persist_artifact_version(
-        root,
-        artifact_id=artifact_id,
-        version=version,
-        commit=commit,
-        event=event,
-    )
+    if dry_run:
+        artifact_ref = f"dry_run/artifacts/{artifact_id}/{version}.json"
+    else:
+        artifact_ref, _artifact_payload = _persist_artifact_version(
+            root,
+            artifact_id=artifact_id,
+            version=version,
+            commit=commit,
+            event=event,
+        )
 
     artifact_heads = snapshot.get("artifact_heads", {})
     if not isinstance(artifact_heads, dict):
@@ -880,11 +890,12 @@ def run_micro_deliberation(
     event = ensure_current_schema(event)
     snapshot = ensure_current_schema(snapshot)
 
-    _append_jsonl(root / "event_log.jsonl", [*step_events, event])
-    _append_jsonl(root / "commits.jsonl", [commit])
-    _write_json(root / "snapshot.json", snapshot)
+    if not dry_run:
+        _append_jsonl(root / "event_log.jsonl", [*step_events, event])
+        _append_jsonl(root / "commits.jsonl", [commit])
+        _write_json(root / "snapshot.json", snapshot)
 
-    if unresolved_dissents and unresolved_dissent_saved:
+    if (not dry_run) and unresolved_dissents and unresolved_dissent_saved:
         dissent_dir = root / "dissent"
         dissent_dir.mkdir(parents=True, exist_ok=True)
         for item in unresolved_dissents:
@@ -897,6 +908,7 @@ def run_micro_deliberation(
         "commit": commit,
         "event": event,
         "snapshot": snapshot,
+        "dry_run": dry_run,
     }
 
 
