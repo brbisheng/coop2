@@ -14,9 +14,14 @@ REQUIRED_AUDIT_FIELDS = (
     "evidence_needs",
     "evidence_refs",
     "evidence_type",
+    "evidence_strength",
     "evidence_gap",
     "confidence",
 )
+
+ALLOWED_EVIDENCE_TYPES = {"empirical", "theoretical", "expert_judgment", "anecdotal", "none"}
+ALLOWED_EVIDENCE_STRENGTH = {"strong", "medium", "weak", "none"}
+ALLOWED_EVIDENCE_REF_PREFIXES = ("doi:", "http://", "https://", "arxiv:", "dataset:", "report:", "doc:")
 
 
 class PerspectiveValidationError(ValueError):
@@ -72,21 +77,46 @@ def validate_perspective_output(payload: dict[str, Any]) -> None:
     if not isinstance(payload["evidence_type"], str) or not payload["evidence_type"].strip():
         raise PerspectiveValidationError("evidence_type must be a non-empty string")
 
+    if not isinstance(payload["evidence_strength"], str) or not payload["evidence_strength"].strip():
+        raise PerspectiveValidationError("evidence_strength must be a non-empty string")
+
     if not isinstance(payload["evidence_gap"], str):
         raise PerspectiveValidationError("evidence_gap must be a string")
 
     evidence_refs = payload["evidence_refs"]
     evidence_type = payload["evidence_type"].strip().lower()
+    evidence_strength = payload["evidence_strength"].strip().lower()
     evidence_gap = payload["evidence_gap"].strip()
 
-    if evidence_type != "none" and not evidence_refs and not evidence_gap:
+    if evidence_type not in ALLOWED_EVIDENCE_TYPES:
         raise PerspectiveValidationError(
-            "minimal evidence completeness failed: provide evidence_refs or explain evidence_gap"
+            f"evidence_type must be one of: {sorted(ALLOWED_EVIDENCE_TYPES)}"
         )
-    if evidence_type == "none" and not evidence_gap:
+
+    if evidence_strength not in ALLOWED_EVIDENCE_STRENGTH:
         raise PerspectiveValidationError(
-            "minimal evidence completeness failed: evidence_gap is required when evidence_type is none"
+            f"evidence_strength must be one of: {sorted(ALLOWED_EVIDENCE_STRENGTH)}"
         )
+
+    for ref in evidence_refs:
+        normalized_ref = ref.strip().lower()
+        if not normalized_ref.startswith(ALLOWED_EVIDENCE_REF_PREFIXES):
+            raise PerspectiveValidationError(
+                "evidence_refs entries must use a supported structured reference prefix"
+            )
+
+    if not evidence_refs and not evidence_gap:
+        raise PerspectiveValidationError(
+            "minimal evidence completeness failed: evidence_gap is required when evidence_refs is empty"
+        )
+    if evidence_type == "none" and (evidence_refs or not evidence_gap):
+        raise PerspectiveValidationError(
+            "minimal evidence completeness failed: evidence_type 'none' requires empty evidence_refs and non-empty evidence_gap"
+        )
+    if evidence_type == "none" and evidence_strength != "none":
+        raise PerspectiveValidationError("evidence_strength must be 'none' when evidence_type is 'none'")
+    if evidence_refs and evidence_strength == "none":
+        raise PerspectiveValidationError("evidence_strength cannot be 'none' when evidence_refs are provided")
 
     if any("fake" in ref.lower() for ref in evidence_refs):
         raise PerspectiveValidationError("evidence_refs contains invalid fake evidence")
@@ -116,6 +146,7 @@ class EconomicsModule(BasePerspectiveModule):
             "evidence_needs": ["collect baseline behavioral indicators"],
             "evidence_refs": ["doi:10.1000/example-econ-01"],
             "evidence_type": "empirical",
+            "evidence_strength": "medium",
             "evidence_gap": "",
             "confidence": 0.55,
         }
@@ -143,6 +174,7 @@ class PhilosophyModule(BasePerspectiveModule):
             "evidence_needs": ["document stakeholder value constraints"],
             "evidence_refs": ["doi:10.1000/example-phil-01"],
             "evidence_type": "theoretical",
+            "evidence_strength": "medium",
             "evidence_gap": "",
             "confidence": 0.58,
         }
@@ -170,6 +202,7 @@ class PsychologyModule(BasePerspectiveModule):
             "evidence_needs": ["collect manipulation-check outcomes"],
             "evidence_refs": ["doi:10.1000/example-psy-01"],
             "evidence_type": "empirical",
+            "evidence_strength": "weak",
             "evidence_gap": "",
             "confidence": 0.52,
         }

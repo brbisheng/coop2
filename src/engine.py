@@ -405,10 +405,12 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
     questions: list[str] = []
     evidence_needs: list[str] = []
     evidence_gaps: list[str] = []
+    evidence_refs_by_module: dict[str, list[str]] = {}
 
     for item in audit_results:
         if not isinstance(item, dict):
             continue
+        module_name = str(item.get("module", "")).strip() or "unknown"
         audit = item.get("audit", {})
         if not isinstance(audit, dict):
             continue
@@ -418,9 +420,20 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         risks.extend(str(x) for x in audit.get("risks", []))
         questions.extend(str(x) for x in audit.get("questions", []))
         evidence_needs.extend(str(x) for x in audit.get("evidence_needs", []))
+        evidence_refs_by_module[module_name] = [
+            str(ref).strip() for ref in audit.get("evidence_refs", []) if str(ref).strip()
+        ]
         evidence_gap = str(audit.get("evidence_gap", "")).strip()
         if evidence_gap:
             evidence_gaps.append(evidence_gap)
+
+    unique_claims = sorted(set(revisions + risks + questions))
+    covered_claims = set(revisions)
+    covered_claims.update(risk for risk in risks if "missing" not in risk.lower())
+    uncovered_key_claims = [claim for claim in unique_claims if claim not in covered_claims]
+
+    modules_with_refs = sum(1 for refs in evidence_refs_by_module.values() if refs)
+    evidence_coverage_rate = (modules_with_refs / len(modules)) if modules else 1.0
 
     rationale = (
         f"modules={','.join(modules) or 'none'}; avg_confidence={avg_confidence:.2f}; "
@@ -438,6 +451,9 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         "questions": questions,
         "evidence_needs": evidence_needs,
         "evidence_gaps": evidence_gaps,
+        "evidence_refs_by_module": evidence_refs_by_module,
+        "evidence_coverage_rate": round(evidence_coverage_rate, 4),
+        "uncovered_key_claims": uncovered_key_claims,
         "rationale": rationale,
     }
 
@@ -521,6 +537,8 @@ def run_micro_deliberation(
     unresolved_dissents = normalized_unresolved_dissents
     perspective_audits = perspective_audits or []
     audit_summary = summarize_audit_batch(perspective_audits)
+    quality_metrics["evidence_coverage_rate"] = audit_summary.get("evidence_coverage_rate", 0.0)
+    quality_metrics["uncovered_key_claims"] = audit_summary.get("uncovered_key_claims", [])
 
     latest_commit_ids = [
         str(item.get("commit_id"))
