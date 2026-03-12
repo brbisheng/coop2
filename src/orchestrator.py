@@ -283,6 +283,36 @@ def _parse_json_object(text: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def validate_transfer_payload(output_text: str) -> tuple[bool, list[str], dict[str, Any] | None]:
+    """Validate transfer seat output follows the strict 4-slot payload."""
+
+    parsed = _parse_json_object(output_text)
+    required_keys = (
+        "source_domain_mechanism",
+        "structural_mapping",
+        "breakpoints",
+        "new_testable_implications",
+    )
+    reasons: list[str] = []
+    if not parsed:
+        return False, ["transfer 输出必须是 JSON 对象，且包含严格四格"], None
+
+    for key in required_keys:
+        if key not in parsed:
+            reasons.append(f"缺少字段: {key}")
+
+    extras = [key for key in parsed if key not in required_keys]
+    if extras:
+        reasons.append(f"仅允许四格字段，存在额外字段: {', '.join(extras)}")
+
+    for key in required_keys:
+        value = parsed.get(key)
+        if value in (None, "", [], {}):
+            reasons.append(f"字段不能为空: {key}")
+
+    return len(reasons) == 0, reasons, parsed
+
+
 def validate_seat_output(
     *,
     seat: str,
@@ -369,7 +399,20 @@ def validate_seat_output(
         if not any(marker in text for marker in coverage_markers):
             reasons.append("未说明修复覆盖的漏洞")
 
+        transfer_breakpoints = _normalize_list_field(context.get("transfer_breakpoints"))
+        if transfer_breakpoints and parsed:
+            output_compact = json.dumps(parsed, ensure_ascii=False).lower()
+            missing_breakpoints = [bp for bp in transfer_breakpoints if bp.lower() not in output_compact]
+            if missing_breakpoints:
+                reasons.append(
+                    "repair 必须逐条回应 transfer breakpoints，缺失: " + ", ".join(missing_breakpoints)
+                )
+
     elif seat_key == "transfer_seat":
+        transfer_ok, transfer_reasons, _ = validate_transfer_payload(output_text)
+        if not transfer_ok:
+            reasons.extend(transfer_reasons)
+
         structure_markers = ("结构", "structure", "约束", "constraint", "causal")
         rhetorical_markers = ("像", "好比", "就像", "metaphor")
         if not any(marker in text for marker in structure_markers):
@@ -395,6 +438,7 @@ def build_seat_context(round_state: dict[str, Any], seat: str) -> dict[str, Any]
     critique_a = round_state.get("critique_a")
     critique_b = round_state.get("critique_b")
     transfer = round_state.get("transfer")
+    transfer_breakpoints = _normalize_list_field(transfer.get("breakpoints")) if isinstance(transfer, dict) else []
 
     one_critique = critique_a if critique_a not in (None, {}, []) else critique_b
 
@@ -421,6 +465,7 @@ def build_seat_context(round_state: dict[str, Any], seat: str) -> dict[str, Any]
             "critique_a": critique_a,
             "critique_b": critique_b,
             "transfer": transfer,
+            "transfer_breakpoints": transfer_breakpoints,
         }
     else:  # transfer_seat
         seat_view = {

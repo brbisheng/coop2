@@ -75,7 +75,7 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     snapshot = json.loads((session / "snapshot.json").read_text(encoding="utf-8"))
 
     assert len(commits) == 1
-    assert len(events) == 6
+    assert len(events) == 7
     assert commits[0]["commit_id"] in snapshot["latest_commits"]
     assert snapshot["artifact_heads"]["artifact_main_v3"]["version"] == "v1"
     assert (session / "artifacts" / "artifact_main_v3" / "v1.json").exists()
@@ -121,6 +121,7 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
         "proposal",
         "critique_a",
         "critique_b",
+        "transfer",
         "repair",
         "decision",
     }
