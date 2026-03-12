@@ -103,6 +103,57 @@ def _action_decision(action: str, allowed: bool) -> str:
     return DebateDecision.ACCEPT.value if allowed else DebateDecision.PARK.value
 
 
+def allocate_seat(
+    *,
+    arena: str,
+    conflict_type: str,
+    agent_module_mix: dict[str, float],
+    seat_frequency_history: dict[str, int],
+) -> str:
+    """Allocate the best seat for an agent using arena/conflict/mix/history signals."""
+
+    arena_specs = load_arenas(Path(__file__).resolve().parents[1] / "config" / "arenas.yaml")
+    spec = arena_specs.get(arena)
+    seat_cfg = spec.seat_allocation if spec else {}
+
+    base_scores: dict[str, float] = {
+        str(seat).strip().lower(): float(score)
+        for seat, score in dict(seat_cfg.get("base_scores", {})).items()
+        if str(seat).strip()
+    }
+    if not base_scores:
+        base_scores = {"proposer": 1.0, "critic": 1.0, "repairer": 1.0}
+
+    conflict_bias_map = dict(seat_cfg.get("conflict_bias", {}))
+    conflict_key = normalize_conflict_type(conflict_type)
+    conflict_bias = conflict_bias_map.get(conflict_key, {}) if isinstance(conflict_bias_map, dict) else {}
+
+    module_bias = {
+        "economics": {"proposer": 0.25, "critic": 0.15, "repairer": 0.1},
+        "psychology": {"critic": 0.30, "proposer": 0.05, "repairer": 0.05},
+        "philosophy": {"critic": 0.25, "repairer": 0.15, "proposer": 0.05},
+    }
+    history_penalty = float(seat_cfg.get("history_penalty", 0.2))
+
+    best_seat = "proposer"
+    best_score = float("-inf")
+    for seat, base in base_scores.items():
+        score = float(base)
+        score += float(conflict_bias.get(seat, 0.0)) if isinstance(conflict_bias, dict) else 0.0
+
+        for module, weight in agent_module_mix.items():
+            if not isinstance(weight, (int, float)):
+                continue
+            score += float(weight) * float(module_bias.get(str(module).strip().lower(), {}).get(seat, 0.0))
+
+        score -= history_penalty * float(seat_frequency_history.get(seat, 0))
+        if score > best_score:
+            best_score = score
+            best_seat = seat
+
+    return best_seat
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}

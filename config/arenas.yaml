@@ -9,7 +9,22 @@
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"]
+      "allowed_outputs": ["patch", "dissent", "merge"],
+      "seat_allocation": {
+        "base_scores": {"proposer": 1.0, "critic": 1.1, "repairer": 0.9},
+        "conflict_bias": {
+          "execution": {"repairer": 0.4},
+          "goal": {"proposer": 0.3},
+          "method": {"critic": 0.3}
+        },
+        "history_penalty": 0.2
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": ["proposer", "critic"],
+        "consecutive_threshold": 3,
+        "on_violation": "downweight"
+      }
     },
     {
       "arena_name": "mechanism",
@@ -20,7 +35,21 @@
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"]
+      "allowed_outputs": ["patch", "dissent", "merge"],
+      "seat_allocation": {
+        "base_scores": {"proposer": 1.0, "critic": 1.0, "repairer": 1.0},
+        "conflict_bias": {
+          "execution": {"repairer": 0.5},
+          "method": {"critic": 0.4}
+        },
+        "history_penalty": 0.25
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": ["proposer", "critic"],
+        "consecutive_threshold": 2,
+        "on_violation": "reject"
+      }
     },
     {
       "arena_name": "empirical_grounding",
@@ -31,7 +60,21 @@
         "repair_or_merge": 1
       },
       "min_unique_agents": 3,
-      "allowed_outputs": ["patch", "dissent", "merge"]
+      "allowed_outputs": ["patch", "dissent", "merge"],
+      "seat_allocation": {
+        "base_scores": {"proposer": 1.1, "critic": 1.0, "repairer": 0.9},
+        "conflict_bias": {
+          "measurement": {"critic": 0.4},
+          "execution": {"repairer": 0.3}
+        },
+        "history_penalty": 0.2
+      },
+      "anti_repetition": {
+        "enabled": true,
+        "critical_seats": ["proposer", "critic"],
+        "consecutive_threshold": 3,
+        "on_violation": "downweight"
+      }
     }
   ]
 }

@@ -19,6 +19,8 @@ class ArenaSpec:
     required_obligations: dict[str, int]
     min_unique_agents: int
     allowed_outputs: list[str]
+    seat_allocation: dict[str, Any]
+    anti_repetition: dict[str, Any]
 
     def __post_init__(self) -> None:
         if not self.arena_name:
@@ -63,6 +65,8 @@ def load_arenas(path: str | Path) -> dict[str, ArenaSpec]:
             required_obligations=dict(item.get("required_obligations", {})),
             min_unique_agents=int(item.get("min_unique_agents", 0)),
             allowed_outputs=list(item.get("allowed_outputs", [])),
+            seat_allocation=dict(item.get("seat_allocation", {})),
+            anti_repetition=dict(item.get("anti_repetition", {})),
         )
         specs[spec.arena_name] = spec
 
