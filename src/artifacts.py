@@ -16,6 +16,29 @@ from .protocol import (
 )
 
 
+CONFLICT_TYPE_VALUES = (
+    "definition",
+    "mechanism",
+    "evidence",
+    "measurement",
+    "scope",
+    "policy",
+    "execution",
+)
+
+
+def normalize_conflict_type(value: Any) -> str:
+    """Validate and normalize dissent conflict type."""
+
+    normalized = str(value or "").strip().lower()
+    if normalized not in CONFLICT_TYPE_VALUES:
+        allowed = "/".join(CONFLICT_TYPE_VALUES)
+        raise ModelValidationError(
+            f"Invalid value for 'conflict_type': {value!r}. Allowed: {allowed}."
+        )
+    return normalized
+
+
 @dataclass(slots=True)
 class ArtifactCard:
     artifact_id: str

@@ -57,12 +57,14 @@ def test_long_history_continuation_trim_keeps_unresolved_dissent(tmp_path: Path)
         "dissent_id": "d-important",
         "artifact_id": "artifact_main_v1",
         "status": "open",
+        "conflict_type": "definition",
         "message": "旧分歧节点但仍未解决",
     }
     resolved = {
         "dissent_id": "d-resolved",
         "artifact_id": "artifact_main_v3",
         "status": "resolved",
+        "conflict_type": "execution",
         "resolved": True,
         "message": "已解决",
     }
@@ -70,6 +72,7 @@ def test_long_history_continuation_trim_keeps_unresolved_dissent(tmp_path: Path)
         "dissent_id": "d-other",
         "artifact_id": "artifact_other",
         "status": "open",
+        "conflict_type": "policy",
         "message": "不相关 lineage",
     }
     for card in (unresolved, resolved, other):
@@ -92,6 +95,42 @@ def test_long_history_continuation_trim_keeps_unresolved_dissent(tmp_path: Path)
     loaded_dissent_ids = {item["dissent_id"] for item in pack.minimal_context["dissents"]}
     assert "d-important" in loaded_dissent_ids
     assert "d-other" not in loaded_dissent_ids
+    dissent_by_id = {item["dissent_id"]: item for item in pack.minimal_context["dissents"]}
+    assert dissent_by_id["d-important"]["conflict_type"] == "definition"
 
     unresolved_ids = {item["dissent_id"] for item in pack.unresolved_conflicts}
     assert "d-important" in unresolved_ids
+
+
+def test_continuation_prefers_high_priority_conflict_type_under_tight_budget(tmp_path: Path):
+    session_dir = tmp_path / "session_002"
+    dissent_dir = session_dir / "dissent"
+    dissent_dir.mkdir(parents=True)
+
+    snapshot = {
+        "snapshot_id": "snap_010",
+        "next_recommended_arena": "mechanism",
+        "artifact_lineages": {"artifact_main_v3": ["artifact_main_v1", "artifact_main_v3"]},
+    }
+    (session_dir / "snapshot.json").write_text(json.dumps(snapshot, ensure_ascii=False), encoding="utf-8")
+    _write_jsonl(session_dir / "commits.jsonl", [])
+    _write_jsonl(session_dir / "event_log.jsonl", [])
+
+    for dissent in (
+        {"dissent_id": "d-exec", "artifact_id": "artifact_main_v1", "status": "open", "conflict_type": "execution"},
+        {"dissent_id": "d-policy", "artifact_id": "artifact_main_v1", "status": "open", "conflict_type": "policy"},
+        {"dissent_id": "d-def", "artifact_id": "artifact_main_v1", "status": "open", "conflict_type": "definition"},
+    ):
+        (dissent_dir / f"{dissent['dissent_id']}.json").write_text(
+            json.dumps(dissent, ensure_ascii=False), encoding="utf-8"
+        )
+
+    pack = build_continuation_pack(
+        session_dir,
+        goal="focus_high_priority",
+        target_artifact_id="artifact_main_v3",
+        recent_k=0,
+        entry_budget=3,
+    )
+
+    assert [item["dissent_id"] for item in pack.minimal_context["dissents"]] == ["d-def"]

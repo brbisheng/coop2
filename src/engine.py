@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .artifacts import normalize_conflict_type
 from .governor import validate_precommit_action
 from .arenas import load_arenas
 from .memory import ContinuationPack, build_minimal_context
@@ -350,6 +351,16 @@ def run_micro_deliberation(
 
     accepted_patches = accepted_patches or []
     unresolved_dissents = unresolved_dissents or []
+    normalized_unresolved_dissents: list[dict[str, Any]] = []
+    for item in unresolved_dissents:
+        if not isinstance(item, dict):
+            continue
+        normalized_item = dict(item)
+        normalized_item["conflict_type"] = normalize_conflict_type(
+            normalized_item.get("conflict_type", "execution")
+        )
+        normalized_unresolved_dissents.append(normalized_item)
+    unresolved_dissents = normalized_unresolved_dissents
     perspective_audits = perspective_audits or []
     audit_summary = summarize_audit_batch(perspective_audits)
 
@@ -374,6 +385,11 @@ def run_micro_deliberation(
         str(item.get("dissent_id"))
         for item in unresolved_dissents
         if isinstance(item, dict) and item.get("dissent_id")
+    ]
+    conflict_types = [
+        str(item.get("conflict_type"))
+        for item in unresolved_dissents
+        if isinstance(item, dict) and item.get("conflict_type")
     ]
     why_not_others = [
         str(item.get("why_not", item.get("counterfactual", ""))).strip()
@@ -400,6 +416,7 @@ def run_micro_deliberation(
         "proposed_changes": proposed_changes,
         "reasons": reasons,
         "dissent_patch_ids": dissent_patch_ids,
+        "conflict_types": conflict_types,
         "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 3,
@@ -420,6 +437,7 @@ def run_micro_deliberation(
         "proposed_changes": proposed_changes,
         "reasons": reasons,
         "dissent_patch_ids": dissent_patch_ids,
+        "conflict_types": conflict_types,
         "why_not_others": why_not_others,
         "timestamp": now,
         "schema_version": 3,
