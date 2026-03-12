@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sys
 
 import pytest
@@ -115,3 +116,37 @@ def test_api_facade_round_continuation_and_artifact_read(tmp_path: Path):
     artifact_payload = read_artifact({"session_dir": str(session_dir), "artifact_id": "artifact_main"})
     assert artifact_payload["artifact_id"] == "artifact_main"
     assert artifact_payload["version"] == "v1"
+
+
+def test_run_round_routes_soul_only_to_soul_ledger_not_governance(tmp_path: Path):
+    session_dir = tmp_path / "session_api_dual_ledger"
+
+    result = run_round(
+        {
+            "session_dir": str(session_dir),
+            "artifact_id": "artifact_main",
+            "arena": "mechanism",
+            "proposed_action": "commit",
+            "critiques": _critiques(),
+            "panel_state": {
+                **_panel_state(),
+                "soul_profile": {"style": {"min_critiques": 999}},
+                "agents": [
+                    {
+                        **_panel_state()["agents"][0],
+                        "soul_profile": {"temperament": {"diversity_threshold": 0.0}},
+                    },
+                    *_panel_state()["agents"][1:],
+                ],
+            },
+            "soul_profile": {"style": {"tone": "calm"}},
+            "accepted_patches": [{"proposed_changes": {"mechanism": "clarified"}}],
+        }
+    )
+
+    assert result["commit"]["allowed"] is True
+    event = result["event"]
+    assert event["cognitive_output_ref"].startswith("ledgers/cognitive/")
+    assert event["soul_trace_ref"].startswith("ledgers/soul/")
+    soul_trace = json.loads((session_dir / event["soul_trace_ref"]).read_text(encoding="utf-8"))
+    assert soul_trace["soul_profile"] == {"style": {"tone": "calm"}}

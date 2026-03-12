@@ -294,6 +294,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _write_ledger_record(root: Path, *, ledger_name: str, record_id: str, payload: dict[str, Any]) -> str:
+    """Persist one ledger record and return a stable reference path."""
+
+    rel_path = Path("ledgers") / ledger_name / f"{record_id}.json"
+    _write_json(root / rel_path, payload)
+    return rel_path.as_posix()
+
+
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
@@ -470,6 +478,7 @@ def run_micro_deliberation(
     unresolved_dissents: list[dict[str, Any]] | None = None,
     unresolved_dissent_saved: bool | None = None,
     perspective_audits: list[dict[str, Any]] | None = None,
+    soul_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one structured deliberation round and persist core records.
 
@@ -627,6 +636,44 @@ def run_micro_deliberation(
         "audit_summary": audit_summary,
         "quality_metrics": quality_metrics,
     }
+
+    cognitive_output = {
+        "cognitive_output_id": f"cog_{event_id}",
+        "event_id": event_id,
+        "commit_id": commit_id,
+        "artifact_id": artifact_id,
+        "arena": arena_name,
+        "decision": decision,
+        "quality_metrics": quality_metrics,
+        "audit_summary": audit_summary,
+        "timestamp": now,
+        "schema_version": 1,
+    }
+    cognitive_output_ref = _write_ledger_record(
+        root,
+        ledger_name="cognitive",
+        record_id=cognitive_output["cognitive_output_id"],
+        payload=cognitive_output,
+    )
+
+    normalized_soul_profile = dict(soul_profile) if isinstance(soul_profile, dict) else {}
+    soul_trace = {
+        "soul_trace_id": f"soul_{event_id}",
+        "event_id": event_id,
+        "artifact_id": artifact_id,
+        "cognitive_output_ref": cognitive_output_ref,
+        "soul_profile": normalized_soul_profile,
+        "timestamp": now,
+        "schema_version": 1,
+    }
+    soul_trace_ref = _write_ledger_record(
+        root,
+        ledger_name="soul",
+        record_id=soul_trace["soul_trace_id"],
+        payload=soul_trace,
+    )
+    event["cognitive_output_ref"] = cognitive_output_ref
+    event["soul_trace_ref"] = soul_trace_ref
 
     step_events = [
         {

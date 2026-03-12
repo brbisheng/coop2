@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.agents import rank_and_filter_seat_candidates
 from src.engine import allocate_seat, run_micro_deliberation, run_perspective_audit_batch, score_seat_candidates
+from src.storage import analyze_dual_ledger_soul_influence
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -52,6 +53,7 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
         critiques=critiques,
         panel_state=panel_state,
         accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
+        soul_profile={"style": {"tone": "concise"}},
         unresolved_dissents=[
             {
                 "dissent_id": "d-1",
@@ -95,6 +97,13 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     }
     assert "quality_metrics" in result["event"]
     assert result["event"]["quality_metrics"] == result["commit"]["quality_metrics"]
+    assert result["event"]["cognitive_output_ref"].startswith("ledgers/cognitive/")
+    assert result["event"]["soul_trace_ref"].startswith("ledgers/soul/")
+    cognitive_record = json.loads((session / result["event"]["cognitive_output_ref"]).read_text(encoding="utf-8"))
+    soul_record = json.loads((session / result["event"]["soul_trace_ref"]).read_text(encoding="utf-8"))
+    assert soul_record["cognitive_output_ref"] == result["event"]["cognitive_output_ref"]
+    assert soul_record["soul_profile"] == {"style": {"tone": "concise"}}
+    assert cognitive_record["artifact_id"] == "artifact_main_v3"
     artifact_v1 = json.loads((session / "artifacts" / "artifact_main_v3" / "v1.json").read_text(encoding="utf-8"))
     assert artifact_v1["version"] == "v1"
     assert artifact_v1["parent_ids"] == []
@@ -754,3 +763,46 @@ def test_run_micro_round_supports_new_arenas_without_degraded_path(tmp_path: Pat
             e for e in _read_jsonl(session / "event_log.jsonl") if e.get("step") == "decision"
         ][0]
         assert decision_step["payload"]["missing_obligations"] == []
+
+
+def test_dual_ledger_analysis_compares_soul_profiles_for_same_cognitive_output(tmp_path: Path):
+    session = tmp_path / "session_dual_ledger"
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v3",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=[
+            {"attack_labels": ["id-risk"], "challenged_fields": ["assumption_set"], "reasoning_path_labels": ["causal-chain"]},
+            {"attack_labels": ["measurement-risk"], "challenged_fields": ["outcome_vars"], "reasoning_path_labels": ["construct-validity"]},
+        ],
+        panel_state=panel_state,
+        soul_profile={"style": {"tone": "concise"}},
+    )
+
+    soul_ref = session / result["event"]["soul_trace_ref"]
+    raw = json.loads(soul_ref.read_text(encoding="utf-8"))
+    raw["soul_trace_id"] = "soul_manual_variant"
+    raw["soul_profile"] = {"temperament": {"pace": "slow"}}
+    (session / "ledgers" / "soul" / "soul_manual_variant.json").write_text(
+        json.dumps(raw, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    analysis = analyze_dual_ledger_soul_influence(session)
+    assert analysis["cognitive_output_count"] == 1
+    assert len(analysis["comparisons"]) == 1
+    comparison = analysis["comparisons"][0]
+    assert comparison["cognitive_output_ref"] == result["event"]["cognitive_output_ref"]
+    assert {json.dumps(item, ensure_ascii=False, sort_keys=True) for item in comparison["soul_profiles"]} == {
+        json.dumps({"style": {"tone": "concise"}}, ensure_ascii=False, sort_keys=True),
+        json.dumps({"temperament": {"pace": "slow"}}, ensure_ascii=False, sort_keys=True),
+    }
