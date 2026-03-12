@@ -9,6 +9,7 @@ Python-first skeleton for a multi-agent deliberation engine focused on artifact-
 - Continuation retrieval pack construction with lineage-aware filtering and budget trimming (`src/memory.py`, `src/engine.py`).
 - Runnable CLI for continuation pack inspection.
 - Demo session data for reproducible local runs.
+- Arena 输入与下一跳路由文档（`docs/arena_routing.md`）。
 
 ## Quick start
 

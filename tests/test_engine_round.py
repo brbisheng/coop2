@@ -639,3 +639,55 @@ def test_quality_metrics_marks_missing_dissent_retention(tmp_path: Path):
 
     assert result["commit"]["quality_metrics"]["dissent_retained"] is False
     assert result["event"]["quality_metrics"]["dissent_status"] == "missing"
+
+
+def test_run_micro_round_supports_new_arenas_without_degraded_path(tmp_path: Path):
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+    ]
+
+    for arena_name in ("counterexample_search", "decision", "writing_prep"):
+        session = tmp_path / f"session_{arena_name}"
+        result = run_micro_deliberation(
+            session_dir=session,
+            artifact_id=f"artifact_{arena_name}",
+            arena=arena_name,
+            proposed_action="commit",
+            critiques=critiques,
+            round_input={
+                "proposal": {"present": True, "artifact_type": "research_idea"},
+                "critique_a": critiques[0],
+                "critique_b": critiques[1],
+                "repair": {"present": True},
+                "decision": {"action": "commit"},
+            },
+            panel_state=panel_state,
+            accepted_patches=[{"proposed_changes": {"note": arena_name}}],
+            unresolved_dissents=[],
+            unresolved_dissent_saved=False,
+        )
+
+        assert result["commit"]["allowed"] is True
+        assert result["commit"]["decision"] == "accept"
+        assert result["event"]["arena"] == arena_name
+        assert result["event"]["obligation_report"]["required"]["decision"] == 1
+        decision_step = [
+            e for e in _read_jsonl(session / "event_log.jsonl") if e.get("step") == "decision"
+        ][0]
+        assert decision_step["payload"]["missing_obligations"] == []
