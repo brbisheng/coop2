@@ -6,8 +6,10 @@ import pytest
 from src.llm_client import OpenRouterClient
 from src.orchestrator import (
     REQUIRED_SAMPLING_KEYS,
+    SEAT_PROMPT_TEMPLATE,
     SEAT_SAMPLING_CONFIG,
     build_seat_context,
+    get_prompt_template_for_seat,
     get_sampling_config_for_seat,
 )
 
@@ -17,6 +19,13 @@ def test_seat_sampling_config_has_required_keys(seat: str):
     cfg = get_sampling_config_for_seat(seat)
     for key in REQUIRED_SAMPLING_KEYS:
         assert key in cfg
+
+
+@pytest.mark.parametrize("seat", ["proposer", "critic_a", "critic_b", "repairer", "transfer_seat"])
+def test_seat_prompt_template_has_objective_and_failure_condition(seat: str):
+    template = get_prompt_template_for_seat(seat)
+    assert template["objective"]
+    assert template["failure_condition"]
 
 
 def test_get_sampling_config_for_seat_returns_copy():
@@ -33,7 +42,7 @@ def test_openrouter_client_injects_per_seat_sampling_and_persists_trace(monkeypa
         captured["headers"] = headers
         captured["json"] = body
         captured["timeout"] = timeout_s
-        return {"id": "resp-1", "choices": [{"message": {"content": "ok"}}]}
+        return {"id": "resp-1", "choices": [{"message": {"content": "alternative path with independent evidence"}}]}
 
     monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
 
@@ -50,12 +59,48 @@ def test_openrouter_client_injects_per_seat_sampling_and_persists_trace(monkeypa
     assert isinstance(body, dict)
     assert body["temperature"] == SEAT_SAMPLING_CONFIG["critic_b"]["temperature"]
     assert body["presence_penalty"] == SEAT_SAMPLING_CONFIG["critic_b"]["presence_penalty"]
+    assert body["messages"][0]["role"] == "system"
+    assert SEAT_PROMPT_TEMPLATE["critic_b"]["objective"] in body["messages"][0]["content"]
 
     trace_file = tmp_path / "round_03_critic_b_trace.json"
     assert trace_file.exists()
     trace = json.loads(trace_file.read_text(encoding="utf-8"))
     assert trace["seat"] == "critic_b"
     assert trace["sampling"]["presence_penalty"] == SEAT_SAMPLING_CONFIG["critic_b"]["presence_penalty"]
+    assert trace["local_validation"]["is_valid"] is True
+
+
+def test_openrouter_client_retries_once_when_local_validation_fails(monkeypatch, tmp_path: Path):
+    calls: list[dict[str, object]] = []
+
+    def fake_post_json(self, *, url, headers, body, timeout_s):
+        calls.append(body)
+        if len(calls) == 1:
+            return {"id": "resp-initial", "choices": [{"message": {"content": "just rhetoric"}}]}
+        return {
+            "id": "resp-retry",
+            "choices": [{"message": {"content": "结构迁移 with constraint and causal mapping"}}],
+        }
+
+    monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
+
+    client = OpenRouterClient(api_key="k", model="openai/gpt-4o-mini")
+    payload = client.run_seat(
+        seat="transfer_seat",
+        round_index=8,
+        messages=[{"role": "user", "content": "hello"}],
+        trace_dir=tmp_path,
+    )
+
+    assert payload["id"] == "resp-retry"
+    assert len(calls) == 2
+    retry_messages = calls[1]["messages"]
+    assert "你重复了/违反了以下约束" in retry_messages[-1]["content"]
+
+    trace_file = tmp_path / "round_08_transfer_seat_trace.json"
+    trace = json.loads(trace_file.read_text(encoding="utf-8"))
+    assert trace["retry"]["attempted"] is True
+    assert trace["retry"]["failure_reasons"]
 
 
 def test_unknown_seat_raises_error():
@@ -75,7 +120,11 @@ def test_build_seat_context_windows():
     }
 
     assert build_seat_context(round_state, "proposer") == {"topic": "t", "history_summary": "h"}
-    assert build_seat_context(round_state, "critic_a") == {"proposal": {"p": 1}, "minimal_evidence": ["e1"]}
+    assert build_seat_context(round_state, "critic_a") == {
+        "proposal": {"p": 1},
+        "minimal_evidence": ["e1"],
+        "critique_b": {"b": 1},
+    }
     assert build_seat_context(round_state, "critic_b") == {"proposal": {"p": 1}, "critique_a": {"a": 1}}
     assert build_seat_context(round_state, "repairer") == {
         "proposal": {"p": 1},
@@ -88,7 +137,7 @@ def test_build_seat_context_windows():
 
 def test_openrouter_client_persists_seat_context_trace(monkeypatch, tmp_path: Path):
     def fake_post_json(self, *, url, headers, body, timeout_s):
-        return {"id": "resp-2", "choices": [{"message": {"content": "ok"}}]}
+        return {"id": "resp-2", "choices": [{"message": {"content": "minimal change covers vulnerabilities"}}]}
 
     monkeypatch.setattr(OpenRouterClient, "_post_json", fake_post_json)
 
