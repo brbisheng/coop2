@@ -48,6 +48,10 @@ def test_build_agent_from_config_and_persona_mix_from_config_file():
     assert agent.seat_policy["forbidden_seats"] == ["critic"]
     assert agent.seat_policy["cooldown_rounds"] == 1
 
+    agent_b = build_agent_from_config(payload["agents"][1])
+    assert round(agent_b.human_base.weight, 6) == 0.5
+    assert agent_b.human_base.subvalves["execution_realism"] == 0.35
+
 
 def test_seat_policy_supports_preference_taboo_and_cooldown():
     policy = {
@@ -155,3 +159,39 @@ def test_build_agent_without_soul_provider_falls_back_to_default_soul_profile():
     agent = build_agent_from_config(raw, soul_provider=None)
 
     assert agent.soul_profile == {}
+
+
+def test_build_agent_from_config_supports_subvalve_weight_dict():
+    raw = {
+        "agent_id": "a7",
+        "human_base": {
+            "weight": {
+                "practical_friction": 0.7,
+                "social_interpretation": 0.5,
+                "bounded_attention": 0.3,
+                "execution_realism": 0.9,
+            },
+            "heuristics": ["h1"],
+        },
+        "module_weights": {"economics": 1.0},
+    }
+
+    agent = build_agent_from_config(raw)
+
+    assert round(agent.human_base.weight, 6) == 0.6
+    assert agent.human_base.subvalves["practical_friction"] == 0.7
+    mix = persona_mix(agent)
+    assert "human_base.practical_friction" in mix
+
+
+def test_build_agent_from_config_keeps_backward_compat_single_weight():
+    raw = {
+        "agent_id": "a8",
+        "human_base": {"weight": 0.55, "heuristics": ["h1"]},
+        "module_weights": {"economics": 1.0},
+    }
+
+    agent = build_agent_from_config(raw)
+
+    assert agent.human_base.weight == 0.55
+    assert agent.human_base.subvalves == {}

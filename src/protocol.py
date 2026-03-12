@@ -192,6 +192,12 @@ def _agent_weight_vector(agent_state: dict[str, Any]) -> dict[str, float]:
     if isinstance(human_weight, (int, float)) and human_weight > 0:
         vector["human_base"] = float(human_weight)
 
+    raw_subvalves = agent_state.get("human_base_subvalves", agent_state.get("human_subvalves", {}))
+    if isinstance(raw_subvalves, dict):
+        for name, raw_weight in raw_subvalves.items():
+            if isinstance(raw_weight, (int, float)) and raw_weight > 0:
+                vector[f"human_base.{str(name).strip().lower()}"] = float(raw_weight)
+
     raw_modules = agent_state.get("module_weights", {})
     if isinstance(raw_modules, dict):
         for module_name, raw_weight in raw_modules.items():

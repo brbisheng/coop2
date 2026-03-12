@@ -22,7 +22,12 @@
     {
       "agent_id": "agent_b",
       "human_base": {
-        "weight": 0.50,
+        "weight": {
+          "practical_friction": 0.60,
+          "social_interpretation": 0.55,
+          "bounded_attention": 0.50,
+          "execution_realism": 0.35
+        },
         "heuristics": [
           "communication is misunderstood",
           "social pressure changes behavior"
@@ -42,6 +47,10 @@
       "agent_id": "agent_c",
       "human_base": {
         "weight": 0.40,
+        "subvalves": {
+          "practical_friction": 0.30,
+          "execution_realism": 0.50
+        },
         "heuristics": [
           "risk aversion matters",
           "implementation is messy"

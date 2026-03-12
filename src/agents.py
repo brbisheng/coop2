@@ -125,8 +125,20 @@ def build_agent_from_config(
     if not isinstance(human_raw, dict):
         raise AgentConfigError("human_base is required and must be a mapping")
 
+    raw_weight = human_raw.get("weight", 0)
+    raw_subvalves = human_raw.get("subvalves")
+
+    if isinstance(raw_weight, dict):
+        subvalves = dict(raw_weight)
+        positive = [float(value) for value in subvalves.values() if isinstance(value, (int, float)) and value > 0]
+        weight = sum(positive) / len(positive) if positive else 0.0
+    else:
+        subvalves = dict(raw_subvalves) if isinstance(raw_subvalves, dict) else {}
+        weight = raw_weight
+
     human_base = HumanBaseProfile(
-        weight=human_raw.get("weight", 0),
+        weight=weight,
+        subvalves=subvalves,
         heuristics=list(human_raw.get("heuristics", [])),
     )
 
@@ -160,6 +172,7 @@ def persona_mix(agent: AgentInstance) -> dict[str, float]:
     """Return normalized human/module mix used by panel diversity logic."""
 
     mix = {"human_base": agent.human_base.weight}
+    mix.update({f"human_base.{name}": value for name, value in agent.human_base.subvalves.items()})
     mix.update(agent.module_weights)
 
     total = sum(value for value in mix.values() if value > 0)
