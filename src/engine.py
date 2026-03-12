@@ -310,6 +310,7 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
     risks: list[str] = []
     questions: list[str] = []
     evidence_needs: list[str] = []
+    evidence_gaps: list[str] = []
 
     for item in audit_results:
         if not isinstance(item, dict):
@@ -323,6 +324,9 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         risks.extend(str(x) for x in audit.get("risks", []))
         questions.extend(str(x) for x in audit.get("questions", []))
         evidence_needs.extend(str(x) for x in audit.get("evidence_needs", []))
+        evidence_gap = str(audit.get("evidence_gap", "")).strip()
+        if evidence_gap:
+            evidence_gaps.append(evidence_gap)
 
     rationale = (
         f"modules={','.join(modules) or 'none'}; avg_confidence={avg_confidence:.2f}; "
@@ -339,6 +343,7 @@ def summarize_audit_batch(audit_results: list[dict[str, Any]]) -> dict[str, Any]
         "risks": risks,
         "questions": questions,
         "evidence_needs": evidence_needs,
+        "evidence_gaps": evidence_gaps,
         "rationale": rationale,
     }
 
@@ -427,6 +432,8 @@ def run_micro_deliberation(
         if isinstance(item, dict) and str(item.get("status", "")).lower() == "open"
     ]
     open_issues = [issue for issue in open_issues if issue]
+    evidence_gap_issues = [f"evidence_gap: {gap}" for gap in audit_summary.get("evidence_gaps", []) if str(gap).strip()]
+    open_issues.extend(evidence_gap_issues)
     proposed_changes = [
         patch.get("proposed_changes", {})
         for patch in accepted_patches
@@ -451,6 +458,8 @@ def run_micro_deliberation(
         "no explicit alternatives were recorded in this round"
     ]
     reasons = [str(reason).strip() for reason in [reason] if str(reason).strip()]
+    if evidence_gap_issues:
+        reasons.append("evidence gaps remain unresolved")
     version = _derive_version(parent_ids)
 
     commit = {

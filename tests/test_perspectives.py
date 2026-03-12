@@ -18,6 +18,9 @@ def test_validate_perspective_output_missing_required_field():
         "risks": [],
         "questions": [],
         "evidence_needs": [],
+        "evidence_refs": [],
+        "evidence_type": "none",
+        "evidence_gap": "need baseline evidence",
     }
 
     try:
@@ -36,6 +39,9 @@ def test_validate_perspective_output_rejects_non_numeric_confidence():
         "risks": [],
         "questions": [],
         "evidence_needs": [],
+        "evidence_refs": ["doi:10.1000/test"],
+        "evidence_type": "empirical",
+        "evidence_gap": "",
         "confidence": "high",
     }
 
@@ -71,9 +77,56 @@ def test_register_perspective_module_supports_dynamic_registration():
                     "risks": [],
                     "questions": [],
                     "evidence_needs": [],
+                    "evidence_refs": ["doi:10.1000/temp"],
+                    "evidence_type": "empirical",
+                    "evidence_gap": "",
                     "confidence": 0.1,
                 }
             )
 
     register_perspective_module(_TempModule)
     assert get_registered_module_class("temp_module") is _TempModule
+
+
+def test_validate_perspective_output_rejects_missing_evidence_completeness():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": [],
+        "evidence_type": "empirical",
+        "evidence_gap": "",
+        "confidence": 0.8,
+    }
+
+    try:
+        validate_perspective_output(payload)
+    except PerspectiveValidationError as exc:
+        assert "minimal evidence completeness failed" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for missing evidence completeness")
+
+
+def test_validate_perspective_output_rejects_fake_evidence():
+    payload = {
+        "observations": ["obs"],
+        "criticisms": ["crit"],
+        "revisions": ["rev"],
+        "risks": ["risk"],
+        "questions": ["q"],
+        "evidence_needs": ["need"],
+        "evidence_refs": ["fake://made-up-source"],
+        "evidence_type": "empirical",
+        "evidence_gap": "",
+        "confidence": 0.8,
+    }
+
+    try:
+        validate_perspective_output(payload)
+    except PerspectiveValidationError as exc:
+        assert "fake evidence" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for fake evidence")

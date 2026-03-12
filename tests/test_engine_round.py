@@ -440,6 +440,9 @@ def test_run_perspective_audit_batch_rejects_invalid_module_payload():
                 "risks": [],
                 "questions": [],
                 "evidence_needs": [],
+                "evidence_refs": [],
+                "evidence_type": "none",
+                "evidence_gap": "gap",
             }
 
     try:
@@ -453,6 +456,98 @@ def test_run_perspective_audit_batch_rejects_invalid_module_payload():
         assert "Missing required audit fields" in str(exc)
     else:
         raise AssertionError("expected PerspectiveValidationError for invalid module output")
+
+
+
+
+def test_run_perspective_audit_batch_rejects_fake_evidence_payload():
+    from src.perspectives import PerspectiveValidationError
+
+    class _FakeEvidenceModule:
+        name = "fake_evidence"
+        version = "0.1"
+
+        def audit(self, artifact, local_context, unresolved_conflicts):
+            return {
+                "observations": ["obs"],
+                "criticisms": ["crit"],
+                "revisions": ["rev"],
+                "risks": ["risk"],
+                "questions": ["q"],
+                "evidence_needs": ["need"],
+                "evidence_refs": ["fake://fabricated"],
+                "evidence_type": "empirical",
+                "evidence_gap": "",
+                "confidence": 0.6,
+            }
+
+    try:
+        run_perspective_audit_batch(
+            modules=[_FakeEvidenceModule()],
+            artifact={"artifact_id": "a1"},
+            local_context={"arena": "mechanism"},
+            unresolved_conflicts=[],
+        )
+    except PerspectiveValidationError as exc:
+        assert "fake evidence" in str(exc)
+    else:
+        raise AssertionError("expected PerspectiveValidationError for fake evidence")
+
+
+def test_run_micro_round_surfaces_evidence_gap_in_open_issues_and_reasons(tmp_path: Path):
+    session = tmp_path / "session_evidence_gap"
+    critiques = [
+        {
+            "attack_labels": ["id-risk"],
+            "challenged_fields": ["assumption_set"],
+            "reasoning_path_labels": ["causal-chain"],
+        },
+        {
+            "attack_labels": ["measurement-risk"],
+            "challenged_fields": ["outcome_vars"],
+            "reasoning_path_labels": ["construct-validity"],
+        },
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.4, "module_weights": {"economics": 0.6}},
+            {"agent_id": "a2", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+    audits = [
+        {
+            "module": "economics",
+            "module_version": "0.1",
+            "audit": {
+                "observations": ["obs"],
+                "criticisms": ["crit"],
+                "revisions": ["rev"],
+                "risks": ["risk"],
+                "questions": ["q"],
+                "evidence_needs": ["need"],
+                "evidence_refs": [],
+                "evidence_type": "none",
+                "evidence_gap": "missing baseline dataset",
+                "confidence": 0.5,
+            },
+        }
+    ]
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_gap",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "with-gap"}}],
+        unresolved_dissents=[],
+        unresolved_dissent_saved=False,
+        perspective_audits=audits,
+    )
+
+    assert "evidence_gap: missing baseline dataset" in result["event"]["open_issues"]
+    assert "evidence gaps remain unresolved" in result["event"]["reasons"]
 
 
 def test_run_micro_round_aggregates_three_perspective_modules(tmp_path: Path):
