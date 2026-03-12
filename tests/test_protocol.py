@@ -41,3 +41,48 @@ def test_persona_diversity_score_higher_for_distinct_personas():
     }
     assert persona_diversity_score(high_diversity) > persona_diversity_score(low_diversity)
 
+
+
+def test_persona_diversity_includes_human_subvalves():
+    low_diversity = {
+        "agents": [
+            {
+                "human_base_weight": 0.5,
+                "human_base_subvalves": {
+                    "practical_friction": 0.5,
+                    "social_interpretation": 0.5,
+                },
+                "module_weights": {"economics": 0.5},
+            },
+            {
+                "human_base_weight": 0.5,
+                "human_base_subvalves": {
+                    "practical_friction": 0.5,
+                    "social_interpretation": 0.5,
+                },
+                "module_weights": {"economics": 0.5},
+            },
+        ]
+    }
+    high_diversity = {
+        "agents": [
+            {
+                "human_base_weight": 0.5,
+                "human_base_subvalves": {
+                    "practical_friction": 0.9,
+                    "social_interpretation": 0.1,
+                },
+                "module_weights": {"economics": 0.5},
+            },
+            {
+                "human_base_weight": 0.5,
+                "human_base_subvalves": {
+                    "practical_friction": 0.1,
+                    "social_interpretation": 0.9,
+                },
+                "module_weights": {"economics": 0.5},
+            },
+        ]
+    }
+
+    assert persona_diversity_score(high_diversity) > persona_diversity_score(low_diversity)
