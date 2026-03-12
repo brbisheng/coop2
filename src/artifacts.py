@@ -353,3 +353,53 @@ class Snapshot:
     def _require_non_empty(name: str, value: str) -> None:
         if not isinstance(value, str) or not value.strip():
             raise ModelValidationError(f"{name} must be a non-empty string")
+
+
+@dataclass(slots=True)
+class ManuscriptCard:
+    manuscript_id: str
+    artifact_id: str
+    chapter_slot: str
+    evidence_refs: list[str] = field(default_factory=list)
+    pending_conflicts: list[str] = field(default_factory=list)
+    alternative_explanations: list[str] = field(default_factory=list)
+    source_snapshot_id: str | None = None
+    source_commit_id: str | None = None
+    schema_version: int = CURRENT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        self._require_non_empty("manuscript_id", self.manuscript_id)
+        self._require_non_empty("artifact_id", self.artifact_id)
+        self._require_non_empty("chapter_slot", self.chapter_slot)
+        if any(not isinstance(item, str) or not item.strip() for item in self.evidence_refs):
+            raise ModelValidationError("evidence_refs must contain non-empty strings")
+        if any(not isinstance(item, str) or not item.strip() for item in self.pending_conflicts):
+            raise ModelValidationError("pending_conflicts must contain non-empty strings")
+        if any(
+            not isinstance(item, str) or not item.strip() for item in self.alternative_explanations
+        ):
+            raise ModelValidationError("alternative_explanations must contain non-empty strings")
+        if self.source_snapshot_id is not None and not isinstance(self.source_snapshot_id, str):
+            raise ModelValidationError("source_snapshot_id must be str | None")
+        if self.source_commit_id is not None and not isinstance(self.source_commit_id, str):
+            raise ModelValidationError("source_commit_id must be str | None")
+        if not isinstance(self.schema_version, int) or self.schema_version < 1:
+            raise ModelValidationError("schema_version must be a positive integer")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "manuscript_id": self.manuscript_id,
+            "artifact_id": self.artifact_id,
+            "chapter_slot": self.chapter_slot,
+            "evidence_refs": self.evidence_refs,
+            "pending_conflicts": self.pending_conflicts,
+            "alternative_explanations": self.alternative_explanations,
+            "source_snapshot_id": self.source_snapshot_id,
+            "source_commit_id": self.source_commit_id,
+            "schema_version": self.schema_version,
+        }
+
+    @staticmethod
+    def _require_non_empty(name: str, value: str) -> None:
+        if not isinstance(value, str) or not value.strip():
+            raise ModelValidationError(f"{name} must be a non-empty string")
