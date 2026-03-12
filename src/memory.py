@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .artifacts import CONFLICT_TYPE_VALUES
+
 
 @dataclass(slots=True)
 class ContinuationPack:
@@ -96,6 +98,24 @@ def _is_unresolved_dissent(entry: dict[str, Any]) -> bool:
     return False
 
 
+_CONFLICT_TYPE_RANK = {
+    "definition": 0,
+    "mechanism": 1,
+    "evidence": 2,
+    "measurement": 3,
+    "scope": 4,
+    "policy": 5,
+    "execution": 6,
+}
+
+
+def _conflict_type_rank(entry: dict[str, Any]) -> int:
+    conflict_type = str(entry.get("conflict_type", "execution")).strip().lower()
+    if conflict_type not in CONFLICT_TYPE_VALUES:
+        return _CONFLICT_TYPE_RANK["execution"]
+    return _CONFLICT_TYPE_RANK[conflict_type]
+
+
 def _apply_budget(
     recent_related: list[dict[str, Any]],
     key_nodes: list[dict[str, Any]],
@@ -113,6 +133,8 @@ def _apply_budget(
     if entry_budget > 0 and len(selected) > entry_budget:
         key_ids = {id(item) for item in key_nodes}
         keep = [item for item in selected if id(item) in key_ids]
+        if len(keep) > entry_budget:
+            return keep[:entry_budget]
         free_budget = max(entry_budget - len(keep), 0)
         recent_keep = [item for item in selected if id(item) not in key_ids][-free_budget:]
         selected = recent_keep + keep
@@ -146,6 +168,7 @@ def build_minimal_context(
     related_events = [entry for entry in events if _is_related(entry, lineage)]
 
     unresolved = [entry for entry in related_dissents if _is_unresolved_dissent(entry)]
+    unresolved = sorted(unresolved, key=_conflict_type_rank)
 
     # Reserve budget equally for the three streams while always retaining unresolved dissent nodes.
     stream_budget = max(entry_budget // 3, 1)

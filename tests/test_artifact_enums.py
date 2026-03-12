@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.artifacts import ArtifactCard, CommitRecord, DebateTurn
+from src.artifacts import ArtifactCard, CommitRecord, DebateTurn, normalize_conflict_type
 from src.protocol import ModelValidationError
 
 
@@ -127,3 +127,12 @@ def test_commit_record_requires_non_empty_explanation_fields():
             dissent_patch_ids=["d-1"],
             why_not_others="",
         )
+
+
+def test_conflict_type_rejects_invalid_value():
+    with pytest.raises(ModelValidationError, match="Invalid value for 'conflict_type'"):
+        normalize_conflict_type("unknown")
+
+
+def test_conflict_type_accepts_allowed_values():
+    assert normalize_conflict_type("Mechanism") == "mechanism"

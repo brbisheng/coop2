@@ -56,6 +56,7 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
                 "dissent_id": "d-1",
                 "artifact_id": "artifact_main_v2",
                 "status": "open",
+                "conflict_type": "mechanism",
                 "message": "identification assumption unresolved",
                 "why_not": "branch-B removed key mechanism variable",
             }
@@ -79,9 +80,11 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert commits[0]["reasons"]
     assert commits[0]["why_not_others"]
     assert commits[0]["dissent_patch_ids"]
+    assert commits[0]["conflict_types"] == ["mechanism"]
     assert events[-1]["reasons"]
     assert events[-1]["why_not_others"]
     assert events[-1]["dissent_patch_ids"]
+    assert events[-1]["conflict_types"] == ["mechanism"]
     artifact_v1 = json.loads((session / "artifacts" / "artifact_main_v3" / "v1.json").read_text(encoding="utf-8"))
     assert artifact_v1["version"] == "v1"
     assert artifact_v1["parent_ids"] == []
@@ -101,6 +104,40 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
         "decision",
     }
     assert (session / "dissent" / "d-1.json").exists()
+    dissent_saved = json.loads((session / "dissent" / "d-1.json").read_text(encoding="utf-8"))
+    assert dissent_saved["conflict_type"] == "mechanism"
+
+
+def test_run_micro_round_defaults_missing_conflict_type_to_execution(tmp_path: Path):
+    session = tmp_path / "session_008"
+    critiques = [
+        {"attack_labels": ["id-risk"], "challenged_fields": ["assumption_set"], "reasoning_path_labels": ["causal-chain"]},
+        {"attack_labels": ["measurement-risk"], "challenged_fields": ["outcome_vars"], "reasoning_path_labels": ["construct-validity"]},
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v8",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
+        unresolved_dissents=[{"dissent_id": "d-2", "artifact_id": "artifact_main_v8", "status": "open"}],
+        unresolved_dissent_saved=True,
+    )
+
+    assert result["commit"]["conflict_types"] == ["execution"]
+    assert result["event"]["conflict_types"] == ["execution"]
+    dissent_saved = json.loads((session / "dissent" / "d-2.json").read_text(encoding="utf-8"))
+    assert dissent_saved["conflict_type"] == "execution"
 
 
 def test_run_micro_round_rejects_commit_when_invariants_fail(tmp_path: Path):
