@@ -85,6 +85,15 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
     assert events[-1]["why_not_others"]
     assert events[-1]["dissent_patch_ids"]
     assert events[-1]["conflict_types"] == ["mechanism"]
+    assert "quality_metrics" in result["commit"]
+    assert set(result["commit"]["quality_metrics"]) >= {
+        "obligation_completeness",
+        "critique_independence",
+        "diversity_score",
+        "dissent_retained",
+    }
+    assert "quality_metrics" in result["event"]
+    assert result["event"]["quality_metrics"] == result["commit"]["quality_metrics"]
     artifact_v1 = json.loads((session / "artifacts" / "artifact_main_v3" / "v1.json").read_text(encoding="utf-8"))
     assert artifact_v1["version"] == "v1"
     assert artifact_v1["parent_ids"] == []
@@ -186,6 +195,7 @@ def test_run_micro_round_rejects_commit_when_invariants_fail(tmp_path: Path):
 
     assert result["commit"]["allowed"] is False
     assert result["commit"]["decision"] == "park"
+    assert result["commit"]["quality_metrics"]["dissent_retained"] is True
     assert "only park/continue_discussion allowed" in result["commit"]["reason"]
 
 
@@ -599,3 +609,33 @@ def test_run_micro_round_aggregates_three_perspective_modules(tmp_path: Path):
     assert set(summary["modules"]) == {"economics", "philosophy", "psychology"}
     assert len(summary["revisions"]) == 3
     assert "modules=economics,philosophy,psychology" in result["event"]["patch_rationale"]
+
+
+def test_quality_metrics_marks_missing_dissent_retention(tmp_path: Path):
+    session = tmp_path / "session_009"
+    critiques = [
+        {"attack_labels": ["id-risk"], "challenged_fields": ["assumption_set"], "reasoning_path_labels": ["causal-chain"]},
+        {"attack_labels": ["measurement-risk"], "challenged_fields": ["outcome_vars"], "reasoning_path_labels": ["construct-validity"]},
+    ]
+    panel_state = {
+        "agents": [
+            {"agent_id": "a1", "human_base_weight": 0.5, "module_weights": {"economics": 0.5}},
+            {"agent_id": "a2", "human_base_weight": 0.2, "module_weights": {"philosophy": 0.8}},
+            {"agent_id": "a3", "human_base_weight": 0.3, "module_weights": {"psychology": 0.7}},
+        ]
+    }
+
+    result = run_micro_deliberation(
+        session_dir=session,
+        artifact_id="artifact_main_v9",
+        arena="mechanism",
+        proposed_action="commit",
+        critiques=critiques,
+        panel_state=panel_state,
+        accepted_patches=[{"proposed_changes": {"mechanism": "clarified"}}],
+        unresolved_dissents=[{"dissent_id": "d-9", "artifact_id": "artifact_main_v9", "status": "open"}],
+        unresolved_dissent_saved=False,
+    )
+
+    assert result["commit"]["quality_metrics"]["dissent_retained"] is False
+    assert result["event"]["quality_metrics"]["dissent_status"] == "missing"
