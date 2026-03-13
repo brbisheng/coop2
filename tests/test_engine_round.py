@@ -95,8 +95,16 @@ def test_run_micro_round_produces_commit_event_and_snapshot(tmp_path: Path):
         "obligation_completeness",
         "critique_independence",
         "diversity_score",
+        "critic_path_overlap_rate",
+        "attack_label_dedupe_rate",
+        "repair_coverage_rate",
+        "transfer_effectiveness_rate",
         "dissent_retained",
     }
+    assert result["commit"]["quality_metrics"]["critic_path_overlap_rate"] == 0.0
+    assert result["commit"]["quality_metrics"]["attack_label_dedupe_rate"] == 1.0
+    assert result["commit"]["quality_metrics"]["repair_coverage_rate"] == 1.0
+    assert result["commit"]["quality_metrics"]["transfer_effectiveness_rate"] == 1.0
     assert "quality_metrics" in result["event"]
     assert result["event"]["quality_metrics"] == result["commit"]["quality_metrics"]
     assert result["event"]["cognitive_output_ref"].startswith("ledgers/cognitive/")

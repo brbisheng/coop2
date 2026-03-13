@@ -149,6 +149,9 @@ def _build_round_quality_metrics(
     panel_state: dict[str, Any],
     unresolved_dissents: list[dict[str, Any]],
     unresolved_dissent_saved: bool | None,
+    round_input: dict[str, Any],
+    attack_response_alignment: dict[str, Any],
+    transfer_valid: bool,
 ) -> dict[str, Any]:
     required = obligation_report.get("required", {})
     observed = obligation_report.get("observed", {})
@@ -171,6 +174,56 @@ def _build_round_quality_metrics(
     has_dissent = bool(unresolved_dissents)
     dissent_retained = (not has_dissent) or (unresolved_dissent_saved is True)
 
+    critique_reasoning_paths: list[set[str]] = []
+    attack_labels_all: list[str] = []
+    for critique in critiques[:2]:
+        if not isinstance(critique, dict):
+            continue
+        raw_paths = critique.get("reasoning_path_labels", critique.get("reasoning_tags", []))
+        if isinstance(raw_paths, str):
+            raw_paths = [raw_paths]
+        paths = {str(item).strip().lower() for item in (raw_paths or []) if str(item).strip()}
+        if paths:
+            critique_reasoning_paths.append(paths)
+
+        raw_attack_labels = critique.get("attack_labels", critique.get("attack_points", []))
+        if isinstance(raw_attack_labels, str):
+            raw_attack_labels = [raw_attack_labels]
+        for item in (raw_attack_labels or []):
+            token = str(item).strip().lower()
+            if token:
+                attack_labels_all.append(token)
+
+    critic_path_overlap_rate = 1.0
+    if len(critique_reasoning_paths) >= 2:
+        path_union = critique_reasoning_paths[0] | critique_reasoning_paths[1]
+        if path_union:
+            critic_path_overlap_rate = len(critique_reasoning_paths[0] & critique_reasoning_paths[1]) / len(path_union)
+
+    attack_label_dedupe_rate = 1.0
+    if attack_labels_all:
+        attack_label_dedupe_rate = len(set(attack_labels_all)) / len(attack_labels_all)
+
+    covered_key_attack_count = int(attack_response_alignment.get("covered_key_attack_count", 0))
+    required_key_attack_count = int(attack_response_alignment.get("required_key_attack_count", 0))
+    repair_coverage_rate = 1.0 if required_key_attack_count == 0 else covered_key_attack_count / required_key_attack_count
+
+    transfer_payload = round_input.get("transfer") if isinstance(round_input.get("transfer"), dict) else {}
+    transfer_breakpoints = transfer_payload.get("breakpoints")
+    if isinstance(transfer_breakpoints, str):
+        transfer_breakpoints = [transfer_breakpoints]
+    transfer_breakpoints = [str(item).strip().lower() for item in (transfer_breakpoints or []) if str(item).strip()]
+
+    repair_payload = round_input.get("repair") if isinstance(round_input.get("repair"), dict) else {}
+    responded_breakpoints = repair_payload.get("responded_breakpoints")
+    if isinstance(responded_breakpoints, str):
+        responded_breakpoints = [responded_breakpoints]
+    responded_breakpoints = {str(item).strip().lower() for item in (responded_breakpoints or []) if str(item).strip()}
+    breakpoint_coverage_rate = 1.0
+    if transfer_breakpoints:
+        breakpoint_coverage_rate = len(set(transfer_breakpoints) & responded_breakpoints) / len(set(transfer_breakpoints))
+    transfer_effectiveness_rate = float(transfer_valid) * breakpoint_coverage_rate
+
     return {
         "obligation_completeness": round(obligation_completeness, 4),
         "obligation_observed": observed_total,
@@ -178,6 +231,10 @@ def _build_round_quality_metrics(
         "critique_independence": critique_independence,
         "critique_independence_label": critique_label,
         "diversity_score": round(diversity_score, 4),
+        "critic_path_overlap_rate": round(critic_path_overlap_rate, 4),
+        "attack_label_dedupe_rate": round(attack_label_dedupe_rate, 4),
+        "repair_coverage_rate": round(repair_coverage_rate, 4),
+        "transfer_effectiveness_rate": round(transfer_effectiveness_rate, 4),
         "dissent_retained": dissent_retained,
         "dissent_status": "retained" if dissent_retained else "missing",
         "unresolved_dissent_count": len(unresolved_dissents),
@@ -596,6 +653,9 @@ def run_micro_deliberation(
         panel_state=panel_state,
         unresolved_dissents=unresolved_dissents or [],
         unresolved_dissent_saved=unresolved_dissent_saved,
+        round_input=round_input_data,
+        attack_response_alignment=alignment,
+        transfer_valid=transfer_valid,
     )
     decision = _action_decision(action, commit_allowed)
 
