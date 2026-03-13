@@ -51,3 +51,16 @@ See `docs/demo_continuation.md` and `data/sessions/demo_session/`.
 ```bash
 python -m pytest -q
 ```
+
+### 4) Run auto debate rounds
+
+```bash
+python -m src.auto_debate \
+  --topic "your-topic" \
+  --model "openai/gpt-4o-mini" \
+  --rounds 2 \
+  --session-dir demo_auto \
+  --api-key "$OPENROUTER_API_KEY"
+```
+
+`--session-dir` 传入 `demo_auto` 时会写入 `data/sessions/demo_auto/traces/`。
