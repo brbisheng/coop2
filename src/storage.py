@@ -252,33 +252,43 @@ def summarize_session_quality_trends(events: list[dict[str, Any]]) -> dict[str, 
         and isinstance(event.get("quality_metrics"), dict)
     ]
 
+    metric_keys = (
+        "obligation_completeness",
+        "critique_independence",
+        "diversity_score",
+        "critic_path_overlap_rate",
+        "attack_label_dedupe_rate",
+        "repair_coverage_rate",
+        "transfer_effectiveness_rate",
+    )
+
     if not round_events:
         return {
             "round_count": 0,
-            "series": {
-                "obligation_completeness": [],
-                "critique_independence": [],
-                "diversity_score": [],
-                "dissent_retained": [],
-            },
+            "series": {**{key: [] for key in metric_keys}, "dissent_retained": []},
             "averages": {
-                "obligation_completeness": 0.0,
-                "critique_independence": 0.0,
-                "diversity_score": 0.0,
+                **{key: 0.0 for key in metric_keys},
                 "dissent_retained_ratio": 0.0,
+            },
+            "trends": {key: {"delta": 0.0, "direction": "flat"} for key in metric_keys},
+            "failure_rounds": {
+                "dissent_not_retained": [],
+                "low_obligation_completeness": [],
+                "low_critique_independence": [],
+                "high_critic_path_overlap": [],
+                "low_transfer_effectiveness": [],
+                "count": 0,
+                "round_indices": [],
             },
         }
 
-    obligation_series: list[float] = []
-    independence_series: list[float] = []
-    diversity_series: list[float] = []
+    metric_series: dict[str, list[float]] = {key: [] for key in metric_keys}
     dissent_series: list[bool] = []
 
     for event in round_events:
         metrics = event["quality_metrics"]
-        obligation_series.append(float(metrics.get("obligation_completeness", 0.0)))
-        independence_series.append(float(metrics.get("critique_independence", 0.0)))
-        diversity_series.append(float(metrics.get("diversity_score", 0.0)))
+        for key in metric_keys:
+            metric_series[key].append(float(metrics.get(key, 0.0)))
         dissent_series.append(bool(metrics.get("dissent_retained", False)))
 
     round_count = len(round_events)
@@ -286,20 +296,48 @@ def summarize_session_quality_trends(events: list[dict[str, Any]]) -> dict[str, 
     def _avg(values: list[float]) -> float:
         return round(sum(values) / len(values), 4) if values else 0.0
 
+    def _trend(values: list[float]) -> dict[str, Any]:
+        if len(values) < 2:
+            return {"delta": 0.0, "direction": "flat"}
+        delta = round(values[-1] - values[0], 4)
+        if delta > 0:
+            direction = "up"
+        elif delta < 0:
+            direction = "down"
+        else:
+            direction = "flat"
+        return {"delta": delta, "direction": direction}
+
+    failure_indices: set[int] = set()
+    failure_rounds = {
+        "dissent_not_retained": [idx + 1 for idx, val in enumerate(dissent_series) if not val],
+        "low_obligation_completeness": [
+            idx + 1 for idx, val in enumerate(metric_series["obligation_completeness"]) if val < 1.0
+        ],
+        "low_critique_independence": [
+            idx + 1 for idx, val in enumerate(metric_series["critique_independence"]) if val < 1.0
+        ],
+        "high_critic_path_overlap": [
+            idx + 1 for idx, val in enumerate(metric_series["critic_path_overlap_rate"]) if val >= 0.6
+        ],
+        "low_transfer_effectiveness": [
+            idx + 1 for idx, val in enumerate(metric_series["transfer_effectiveness_rate"]) if val < 1.0
+        ],
+    }
+    for vals in failure_rounds.values():
+        failure_indices.update(vals)
+    failure_rounds["round_indices"] = sorted(failure_indices)
+    failure_rounds["count"] = len(failure_indices)
+
     return {
         "round_count": round_count,
-        "series": {
-            "obligation_completeness": obligation_series,
-            "critique_independence": independence_series,
-            "diversity_score": diversity_series,
-            "dissent_retained": dissent_series,
-        },
+        "series": {**metric_series, "dissent_retained": dissent_series},
         "averages": {
-            "obligation_completeness": _avg(obligation_series),
-            "critique_independence": _avg(independence_series),
-            "diversity_score": _avg(diversity_series),
+            **{key: _avg(values) for key, values in metric_series.items()},
             "dissent_retained_ratio": round(sum(1 for item in dissent_series if item) / round_count, 4),
         },
+        "trends": {key: _trend(values) for key, values in metric_series.items()},
+        "failure_rounds": failure_rounds,
     }
 
 

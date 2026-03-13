@@ -194,6 +194,10 @@ def test_summarize_session_quality_trends_from_round_events():
                 "obligation_completeness": 1.0,
                 "critique_independence": 1.0,
                 "diversity_score": 0.4,
+                "critic_path_overlap_rate": 0.1,
+                "attack_label_dedupe_rate": 1.0,
+                "repair_coverage_rate": 1.0,
+                "transfer_effectiveness_rate": 1.0,
                 "dissent_retained": True,
             },
         },
@@ -203,6 +207,10 @@ def test_summarize_session_quality_trends_from_round_events():
                 "obligation_completeness": 0.5,
                 "critique_independence": 0.0,
                 "diversity_score": 0.2,
+                "critic_path_overlap_rate": 0.9,
+                "attack_label_dedupe_rate": 0.5,
+                "repair_coverage_rate": 0.0,
+                "transfer_effectiveness_rate": 0.0,
                 "dissent_retained": False,
             },
         },
@@ -216,7 +224,10 @@ def test_summarize_session_quality_trends_from_round_events():
     assert summary["series"]["critique_independence"] == [1.0, 0.0]
     assert summary["series"]["dissent_retained"] == [True, False]
     assert summary["averages"]["obligation_completeness"] == 0.75
+    assert summary["averages"]["transfer_effectiveness_rate"] == 0.5
     assert summary["averages"]["dissent_retained_ratio"] == 0.5
+    assert summary["trends"]["transfer_effectiveness_rate"] == {"delta": -1.0, "direction": "down"}
+    assert summary["failure_rounds"]["round_indices"] == [2]
 
 
 
@@ -232,6 +243,10 @@ def test_summarize_session_quality_from_dir_reads_event_log(tmp_path: Path):
                     "obligation_completeness": 1.0,
                     "critique_independence": 1.0,
                     "diversity_score": 0.3,
+                    "critic_path_overlap_rate": 0.2,
+                    "attack_label_dedupe_rate": 1.0,
+                    "repair_coverage_rate": 1.0,
+                    "transfer_effectiveness_rate": 1.0,
                     "dissent_retained": True,
                 },
             }
@@ -241,3 +256,5 @@ def test_summarize_session_quality_from_dir_reads_event_log(tmp_path: Path):
     summary = summarize_session_quality_from_dir(session)
     assert summary["round_count"] == 1
     assert summary["averages"]["diversity_score"] == 0.3
+    assert summary["averages"]["critic_path_overlap_rate"] == 0.2
+    assert summary["failure_rounds"]["count"] == 0
